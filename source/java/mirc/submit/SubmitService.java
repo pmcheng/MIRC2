@@ -18,6 +18,7 @@ import java.util.zip.ZipFile;
 
 import mirc.activity.ActivityDB;
 import mirc.MircConfig;
+import mirc.prefs.Preferences;
 import mirc.storage.Index;
 import mirc.storage.StorageService;
 import mirc.ssadmin.StorageServiceAdmin;
@@ -244,6 +245,15 @@ public class SubmitService extends Servlet {
 			return;
 		}
 		else {
+            MircDocument md;
+            try { md = new MircDocument(mainFile); }
+            catch (Exception crash) { return; }
+            String username = req.getUser().getUsername();
+            Element prefs = Preferences.getInstance().get( username, true );
+            String name=prefs.getAttribute("name");
+            md.insert("",name,"","","","",username,"","","",true);
+            md.save();
+            
 			//Okay, we have an acceptable submission and it is in
 			//the dir directory. The path query parameter, if any, is
 			//in pathParam; this is the path to the XML file of the
@@ -292,7 +302,7 @@ public class SubmitService extends Servlet {
 			result.append("The zip file was received and unpacked successfully:|");
 			result.append("@/storage/" + ssid + "/" + docpath + "|");
 
-			String username = req.getUser().getUsername();
+			//String username = req.getUser().getUsername();
 			boolean isAutoindex = lib.getAttribute("autoindex").equals("yes");
 			boolean isPublisher = req.userHasRole("publisher");
 			setAuthorization(mainFile, username, isAutoindex, isPublisher, (isDocumentUpdate || preserveOwners));
