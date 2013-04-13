@@ -4,7 +4,7 @@
 
 	<title><g0010e0020 desc="PatientID"/>: <g0010e0010 desc="PatientName"/></title>
 
-	<alternative-title><g0008e0020 desc="StudyDate"/> <g0008e0060 desc="Modality"/> Study</alternative-title>
+	<alternative-title><g0010e0020 desc="PatientID"/>: <g0010e0010 desc="PatientName"/></alternative-title>
 
 	<author>
 		<name><g0012e0020 desc="Calling AETitle"/> (draft)</name>
@@ -15,6 +15,10 @@
 	<section heading="History">
 		<p/>
 	</section>
+
+	<image-section heading="Images">
+		<insert-megasave width="700"/>
+	</image-section>
 
 	<section heading="Findings">
 		<p/>
@@ -32,10 +36,6 @@
 		<p/>
 	</section>
 
-	<image-section heading="Images">
-		<insert-megasave width="700"/>
-	</image-section>
-
 	<section heading="Comments">
 		<threadblock id="CB-0-0" />
 	</section>
@@ -46,6 +46,11 @@
 		<update>author</update>
 		<export></export>
 	</authorization>
+
+	<phi>
+		<pt-name><g0010e0010 desc="Patient Name"/></pt-name>
+		<pt-id><g0010e0020 desc="Patient ID"/></pt-id>
+	</phi>
 
 	<publication-date/>
 

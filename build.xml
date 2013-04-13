@@ -1,17 +1,18 @@
 <project name="MIRC" default="all" basedir=".">
 
-	<property name="version" value="Z70"/>
+	<property name="version" value="Z118"/>
 
 	<property name="build" value="${basedir}/build"/>
 	<property name="source" value="${basedir}/source"/>
 	<property name="java" value="${source}/java"/>
 	<property name="files" value="${source}/files"/>
+	<property name="resources" value="${source}/resources"/>
 	<property name="ctp" value="../CTP"/>
 	<property name="libraries" value="${basedir}/libraries"/>
 	<property name="products" value="${basedir}/products"/>
 	<property name="documentation" value="${basedir}/documentation"/>
 	<property name="title" value="MIRC"/>
-	<property name="copyright" value="Copyright 2011 Radiological Society of North America"/>
+	<property name="copyright" value="Copyright 2013 Radiological Society of North America"/>
 	<property name="description" value="CTP/TFS for teaching files"/>
 
 	<path id="classpath">
@@ -56,6 +57,7 @@
 
 		<copy overwrite="true" todir="${build}">
 			<fileset dir="${files}"/>
+			<fileset dir="${resources}"/>
 		</copy>
 
 		<jar jarfile="${build}/CTP/libraries/MIRC.jar">
@@ -89,11 +91,6 @@
 		<copy overwrite="true" todir="${build}/CTP/libraries">
 			<fileset dir="${libraries}" includes="**"/>
 		</copy>
-		<!--
-		<copy overwrite="true" todir="${build}/CTP/xml">
-			<fileset dir="xml" includes="*.*"/>
-		</copy>
-		-->
 		<copy overwrite="true" todir="${build}/config">
 			<fileset dir="${source}/config" includes="*.*"/>
 		</copy>

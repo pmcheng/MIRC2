@@ -170,6 +170,193 @@ public class MircDocument {
 	}
 
 	/**
+	 * Construct a File to contain a MIRCdocument zip export. The filename
+	 * consists of the name of the parent directory, an underscore, and the
+	 * text content of the MIRCdocument's title element (modified to make an
+	 * acceptable filename, with whitespace, slashes, backslashes, and ampersands
+	 * replaced by underscores). The extension is ".zip" unless the extParameter
+	 * is supplied as non-null and non-empty, in which case the extension is
+	 * "." + extParameter.
+	 * @param doc the MIRCdocument XML Document object.
+	 * @param file the file containing the MIRCdocument.
+	 * @param extParameter the desired extension (with no leading period). If this parameter
+	 * is null or empty, the default extension ".zip" is supplied.
+	 * @return the file (note that this is only a File object; this method does not
+	 * insert the zip contents).
+	 */
+	public static File getFileForZip(Document doc, File file, String extParameter) {
+		String ext = ".zip";
+		if ((extParameter != null) && !extParameter.equals("")) ext = "." + extParameter;
+		File parent = file.getParentFile();
+		String name = makeNameFromParent(file);
+		Element titleEl = XmlUtil.getFirstNamedChild(doc, "title");
+		if (titleEl != null) {
+			String title = titleEl.getTextContent().trim();
+			title = title.replaceAll("\\s+", "_");
+			title = title.replaceAll("/", "-");
+			if (title.length() > 0) name = title + "_" + name;
+		}
+		name += ext;
+		return new File(parent, name);
+	}
+
+	private static String makeNameFromParent(File file) {
+		file = new File(file.getAbsolutePath());
+		File parent = file.getParentFile();
+		String name = parent.getName();
+		while ((name.length() < 10) && ( (parent=parent.getParentFile()) != null )) {
+			name = parent.getName() + "_" + name;
+		}
+		return name;
+	}
+
+	/**
+	 * Create an OpenOffice presentation file for this MircDocument;
+	 * @return a file in the temp directory containing an OpenOffice
+	 * presentation (ODP) file
+	 * @throws Exception if any error occurs..
+	 */
+	public File getPresentation(boolean userIsOwner) throws Exception {
+		//Make a directory in which to play
+		File dir = FileUtil.createTempDirectory(docDir);
+
+		//Get a file for the presentation (in the root directory of the MIRCdocument)
+		File odpFile = getFileForZip(doc, docFile, "odp");
+
+		//Find all the images, put them into the pictures directory,
+		//and create the XML document that lists them
+		File pictures = new File(dir, "Pictures");
+		pictures.mkdirs();
+		Document imagesDoc = XmlUtil.getDocument();
+		Element images = imagesDoc.createElement("images");
+		imagesDoc.appendChild(images);
+		NodeList nl = doc.getDocumentElement().getElementsByTagName("image");
+		for (int i=0; i<nl.getLength(); i++) {
+			Element img = (Element)nl.item(i);
+			String name = img.getAttribute("src");
+			if (!name.startsWith("/") && !name.toLowerCase().startsWith("http://")) {
+
+				//Check whether there is an original-dimensions version
+				NodeList alt = img.getElementsByTagName("alternative-image");
+				for (int k=0; k<alt.getLength(); k++) {
+					Element altimg = (Element)alt.item(k);
+					if (altimg.getAttribute("role").equals("original-dimensions")) {
+						String altsrc = altimg.getAttribute("src").toLowerCase();
+						if (altsrc.endsWith(".jpg") || altsrc.endsWith("jpeg")) {
+							img = altimg;
+							break;
+						}
+					}
+				}
+				appendImg(images, img, name, pictures);
+
+				//Check whether there is an annotated image.
+				for (int k=0; k<alt.getLength(); k++) {
+					Element altimg = (Element)alt.item(k);
+					if (altimg.getAttribute("role").equals("annotation")) {
+						String altsrc = altimg.getAttribute("src").toLowerCase();
+						if (altsrc.endsWith(".jpg") || altsrc.endsWith("jpeg")) {
+							String altname = altimg.getAttribute("src");
+							appendImg(images, altimg, altname, pictures);
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		//Add in the little png that OO needs for one of its styles
+		String pngName = "10000000000000200000002000309F1C.png";
+		File png = new File(pictures, pngName);
+		FileUtil.getFile(png, "/odp/"+pngName);
+
+		//Copy in the styles
+		FileUtil.getFile(new File(dir, "styles.xml"), "/odp/styles.xml");
+
+		//Make the META-INF directory and create the manifest.xml file
+		File metaInf = new File(dir, "META-INF");
+		metaInf.mkdirs();
+		File manifestFile = new File(metaInf, "manifest.xml");
+		Document xsl = XmlUtil.getDocument( FileUtil.getStream( "/odp/manifest.xsl" ) );
+		Document manifest = XmlUtil.getTransformedDocument( imagesDoc, xsl, null );
+		FileUtil.setText(manifestFile, XmlUtil.toString(manifest));
+
+		//Process the Document and create the slides file
+		File contentFile = new File(dir, "content.xml");
+		xsl = XmlUtil.getDocument( FileUtil.getStream( "/odp/content.xsl" ) );
+		Object[] params = {
+			"images", imagesDoc,
+			"userIsOwner", (userIsOwner ? "yes" : "no")
+		};
+		Document content = XmlUtil.getTransformedDocument( doc, xsl, params );
+		FileUtil.setText(contentFile, XmlUtil.toString(content));
+
+		//Now zip it all up. Note that we suppress the name of the dir.
+		//If we didn't, neither OO nor PPT would open the file.
+		FileUtil.zipDirectory(dir, odpFile, true);
+
+		//Delete the temp directory and return the file.
+		FileUtil.deleteAll(dir);
+		return odpFile;
+	}
+
+	//Append an image. Constructing the parameters that allow it
+	//to be scaled to the slide. Copy the image to the pictures directory.
+	private void appendImg(Element images, Element img, String name, File pictures) {
+		String src = img.getAttribute("src");
+		int w = StringUtil.getInt(img.getAttribute("w"));
+		int h = StringUtil.getInt(img.getAttribute("h"));
+
+		if ((w != 0) && (h != 0)) {
+
+			//Now figure out how to place and scale the image on the slide.
+			//This has to be a lot easier done in Java than in XSL.
+			float slideWidth = 28;
+			float slideHeight = 21;
+			float marginX = 1;
+			float marginY = 1;
+			float areaWidth = slideWidth - 2*marginX;
+			float areaHeight = slideHeight - 2*marginY;
+			float areaAspectRatio = areaHeight / areaWidth;;
+			float imageAspectRatio = (float)h / (float)w;
+
+			float xcm, ycm, wcm, hcm;
+
+			if (areaAspectRatio < imageAspectRatio) {
+				//fit the image to the height of the area
+				float scale = areaHeight / (float)h;
+				ycm = marginY;
+				hcm = areaHeight;
+				wcm = (float)w * scale;
+				xcm = marginX + (areaWidth - wcm)/2;
+			}
+			else {
+				//fit the image to the width of the area
+				xcm = marginX;
+				wcm = areaWidth;
+				float scale = areaWidth / (float)w;
+				hcm = (float)h * scale;
+				ycm = marginY + (areaHeight - hcm)/2;
+			}
+
+			//Okay, now create the element
+			Element image = images.getOwnerDocument().createElement("image");
+			images.appendChild(image);
+			image.setAttribute("name", name); //this is the value that indexes the image
+			image.setAttribute("src", src); //this is the value that points to the version to use
+			image.setAttribute("x", String.format("%.3fcm",xcm));
+			image.setAttribute("y", String.format("%.3fcm",ycm));
+			image.setAttribute("w", String.format("%.3fcm",wcm));
+			image.setAttribute("h", String.format("%.3fcm",hcm));
+
+			//Now copy the selected image to the Pictures directory
+			File inFile = new File(docDir, src);
+			File outFile = new File(pictures, src);
+			FileUtil.copy(inFile, outFile);
+		}
+	}
+
+	/**
 	 * Set the publication-date element to the current time, creating
 	 * the element if it is missing from the document. This method does
 	 * not modify the element if it already exists and contains non-whitespace
@@ -221,7 +408,30 @@ public class MircDocument {
 	 * Set the publication request.
 	 */
 	public void setPublicationRequest() {
-		doc.getDocumentElement().setAttribute("pubreq", "yes");
+		Element root = doc.getDocumentElement();
+		root.setAttribute("pubreq", "yes");
+		//Make sure a publisher can view and edit the document
+		Element auth = XmlUtil.getFirstNamedChild(root, "authorization");
+		if (auth == null) {
+			auth = doc.createElement("authorization");
+			root.appendChild(auth);
+		}
+		Element read = XmlUtil.getFirstNamedChild(auth, "read");
+		if (read == null) {
+			read = doc.createElement("read");
+			auth.appendChild(read);
+		}
+		if (read.getTextContent().trim().equals("")) {
+			read.setTextContent("publisher");
+		}
+		Element update = XmlUtil.getFirstNamedChild(auth, "update");
+		if (update == null) {
+			update = doc.createElement("update");
+			auth.appendChild(update);
+		}
+		if (update.getTextContent().trim().equals("")) {
+			update.setTextContent("publisher");
+		}
 	}
 
 	/**
@@ -1058,6 +1268,136 @@ public class MircDocument {
 			//There was an error, just insert the value as a text node.
 			Text text = el.getOwnerDocument().createTextNode(value);
 			el.appendChild(text);
+		}
+	}
+
+	//*********************************************************************************************
+	//
+	//	Update images and series with new WW and WL values
+	//
+	//*********************************************************************************************
+	/**
+	 * Update an image, saving it with the specified parameters.
+	 * @param dicomObject the object to use in creating the JPEGs.
+	 * @param frame the frame to use in creating JPEGs.
+	 * @param wl the window level to use in creating JPEGs.
+	 * @param ww the window width to use in creating JPEGs.
+	 * @param q the quality level to use in creating JPEGs.
+	 */
+	public void updateImage(DicomObject dicomObject, int frame, int q, int wl, int ww) throws Exception {
+		File imageFile = dicomObject.getFile();
+		String name = imageFile.getName();
+		Element root = getXML().getDocumentElement();
+		NodeList imageSections = root.getElementsByTagName("image-section");
+		for (int i=0; i<imageSections.getLength(); i++) {
+			Element imageSection = (Element)imageSections.item(i);
+			NodeList alts = root.getElementsByTagName("alternative-image");
+			for (int k=0; k<alts.getLength(); k++) {
+				Element alt = (Element)alts.item(k);
+				if (alt.getAttribute("role").equals("original-format") && alt.getAttribute("src").equals(name)) {
+					Element baseImage = (Element)alt.getParentNode();
+					saveWWWLImages(dicomObject, baseImage, frame, q, wl, ww);
+				}
+			}
+		}
+	}
+
+	public void updateSeries(DicomObject dicomObject, int frame, int q, int wl, int ww) throws Exception {
+		//First, find the study and series information as stored in the order-by element for the DicomObject in the MircDocument.
+		String study = null;
+		String series = null;
+		File imageFile = dicomObject.getFile();
+		String name = imageFile.getName();
+		Element root = getXML().getDocumentElement();
+		NodeList imageSections = root.getElementsByTagName("image-section");
+		for (int i=0; i<imageSections.getLength(); i++) {
+			Element imageSection = (Element)imageSections.item(i);
+			NodeList alts = root.getElementsByTagName("alternative-image");
+			for (int k=0; k<alts.getLength(); k++) {
+				Element alt = (Element)alts.item(k);
+				if (alt.getAttribute("role").equals("original-format") && alt.getAttribute("src").equals(name)) {
+					//Okay, we found the DicomObject in the MircDocument, see if it has an order-by element.
+					Element baseImage = (Element)alt.getParentNode();
+					NodeList obs = baseImage.getElementsByTagName("order-by");
+					if (obs.getLength() > 0) {
+						Element ob = (Element)obs.item(0);
+						study = ob.getAttribute("study");
+						series = ob.getAttribute("series");
+						break;
+					}
+				}
+			}
+			if (series !=  null) break;
+		}
+		if (series == null) {
+			//We didn't find an order-by element to use to identify the series.
+			//The best we can do is try to update the image itself.
+			updateImage(dicomObject, frame, q, wl, ww);
+			return;
+		}
+
+		//Okay, if we get here, we know the study and series information.
+		//Look for all images that match the study and series and update them.
+		//Note that this will also pick up the identified image.
+		//Note also that we still have the nodelist of image-sections.
+		for (int i=0; i<imageSections.getLength(); i++) {
+			Element imageSection = (Element)imageSections.item(i);
+			NodeList obs = root.getElementsByTagName("order-by");
+			for (int k=0; k<obs.getLength(); k++) {
+				Element ob = (Element)obs.item(k);
+				if (ob.getAttribute("study").equals(study) && ob.getAttribute("series").equals(series)) {
+					//Okay, we found an object in the study and series; now get the DicomObject for it
+					Element baseImage = (Element)ob.getParentNode();
+					NodeList alts = baseImage.getElementsByTagName("alternative-image");
+					for (int x=0; x<alts.getLength(); x++) {
+						Element alt = (Element)alts.item(x);
+						if (alt.getAttribute("role").equals("original-format")) {
+							try {
+								DicomObject dob = new DicomObject(new File(docDir, alt.getAttribute("src")));
+								saveWWWLImages(dob, baseImage, frame, q, wl, ww);
+							}
+							catch (Exception skip) { }
+						}
+					}
+				}
+			}
+		}
+	}
+
+	private void saveWWWLImages(DicomObject dicomObject, Element baseImage, int frame, int q, int wl, int ww) throws Exception {
+		if (baseImage == null) return;
+		saveWWWLImage(dicomObject, baseImage, frame, q, wl, ww);
+		Node child = baseImage.getFirstChild();
+		while (child != null) {
+			if (child instanceof Element) {
+				saveWWWLImage(dicomObject, (Element)child, frame, q, wl, ww);
+			}
+			child = child.getNextSibling();
+		}
+	}
+
+	private void saveWWWLImage(DicomObject dob, Element el, int frame, int q, int wl, int ww) throws Exception {
+		if (el == null) return;
+		String tag = el.getTagName();
+		String attr = el.getAttribute("role");
+		if (tag.equals("image") || (tag.equals("alternative-image") && (attr.equals("icon") || attr.equals("original-dimensions")))) {
+			String src = el.getAttribute("src");
+			int w = StringUtil.getInt(el.getAttribute("w"), -1);
+			int h = StringUtil.getInt(el.getAttribute("h"), -1);
+			File file = new File (docDir, src);
+			if (!file.delete()) logger.info("Unable to delete "+file+" before saving");
+			//logger.info("Saving window-leveled JPEG: "+file.getAbsoluteFile()+" ("+wl+","+ww+") ("+w+","+h+")");
+			dob.saveAsWindowLeveledJPEG(file, w, h, frame, q, wl, ww);
+
+			/*
+			//This code was used for testing, to find the problem where it worked only if the image was not scaled.
+			int x = src.lastIndexOf(".jpeg");
+			if (x > 0) {
+				String xsrc = src.substring(0, x) +"["+wl+","+ww+"].jpeg";
+				File xfile = new File(docDir, xsrc);
+				dob.saveAsWindowLeveledJPEG(xfile, -1, -1, frame, q, wl, ww);
+			}
+			*/
 		}
 	}
 

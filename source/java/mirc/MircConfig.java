@@ -173,7 +173,6 @@ public class MircConfig {
 				siteurl = protocol + "://" + host + ":" + ctp.getServerPort();
 				mircRoot.setAttribute("siteurl", siteurl);
 			}
-			logger.info("Site URL: "+siteurl);
 		}
 		catch (Exception ex) { }
 		return siteurl;
@@ -343,7 +342,10 @@ public class MircConfig {
 			String roles,
 			String ui,
 			String popup,
-			String downloadenb) {
+			String downloadenb,
+			String email,
+			String sharestats
+			) {
 		mircRoot.setAttribute("mode",mode);
 		mircRoot.setAttribute("sitename",sitename);
 		mircRoot.setAttribute("showsitename",showsitename);
@@ -357,6 +359,8 @@ public class MircConfig {
 		mircRoot.setAttribute("UI", ui);
 		mircRoot.setAttribute("popup", popup);
 		mircRoot.setAttribute("downloadenb", downloadenb);
+		mircRoot.setAttribute("email", email);
+		mircRoot.setAttribute("sharestats", sharestats);
 		saveXML();
 		reload();
 	}
@@ -366,6 +370,20 @@ public class MircConfig {
 	 */
 	public synchronized String getVersion() {
 		return mircRoot.getAttribute("version");
+	}
+
+	/**
+	 * See if this site is sharing stats with the RSNA
+	 */
+	public synchronized boolean shareStats() {
+		return mircRoot.getAttribute("sharestats").equals("yes");
+	}
+
+	/**
+	 * Get the admin email address
+	 */
+	public synchronized String getAdminEmail() {
+		return mircRoot.getAttribute("email");
 	}
 
 	/**

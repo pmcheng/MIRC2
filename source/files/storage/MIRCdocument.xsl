@@ -9,14 +9,17 @@
 <xsl:param name="user-has-myrsna-acct"/>
 <xsl:param name="user-is-owner"/>
 <xsl:param name="user-is-admin"/>
+<xsl:param name="user-is-publisher"/>
 <xsl:param name="user-can-post"/>
 
 <xsl:param name="edit-url"/>
+<xsl:param name="revert-url"/>
 <xsl:param name="add-url"/>
 <xsl:param name="sort-url"/>
 <xsl:param name="publish-url"/>
 <xsl:param name="delete-url"/>
-<xsl:param name="export-url"/>
+<xsl:param name="ppt-export-url"/>
+<xsl:param name="zip-export-url"/>
 <xsl:param name="filecabinet-url"/>
 <xsl:param name="post-url"/>
 
@@ -333,6 +336,14 @@
 </xsl:template>
 
 <xsl:template name="make-token-buttons">
+	<xsl:variable name="imagecount" select="count(//image-section/image)"/>
+	<p class="imagecount">
+		<xsl:value-of select="$imagecount"/>
+		<xsl:text> image</xsl:text>
+		<xsl:if test="$imagecount != 1">
+			<xsl:text>s</xsl:text>
+		</xsl:if>
+	</p>
 	<xsl:for-each select="//image-section/image">
 		<xsl:variable name="n"><xsl:number /></xsl:variable>
 		<input type="image" class="tokenbuttonDESEL" width="64">
@@ -491,12 +502,15 @@
 					<xsl:call-template name="publish-button"/>
 					<xsl:call-template name="caseoftheday-button"/>
 					<xsl:call-template name="conferences-button"/>
-					<xsl:call-template name="export-button"/>
+					<xsl:call-template name="ppt-export-button"/>
+					<xsl:call-template name="zip-export-button"/>
 					<xsl:call-template name="export-to-button"/>
 					<xsl:call-template name="saveimages-button"/>
 					<xsl:call-template name="myrsna-button"/>
 					<xsl:call-template name="addimages-button"/>
 					<xsl:call-template name="sortimages-button"/>
+					<xsl:call-template name="score-button"/>
+					<xsl:call-template name="revert-button"/>
 					<xsl:call-template name="delete-button"/>
 				</table>
 			</xsl:otherwise>
@@ -505,12 +519,12 @@
 </xsl:template>
 
 <xsl:template name="myrsna-button">
-	<xsl:if test="($user-has-myrsna-acct = 'yes') and (string-length($export-url)!=0)">
+	<xsl:if test="($user-has-myrsna-acct = 'yes') and (string-length($zip-export-url)!=0)">
 		<tr>
 			<td>
 				<input type="button" value="Export to myRSNA Files"
 						title="Export to myRSNA Files"
-						onclick="exportToMyRsnaFiles('{$export-url}');"/>
+						onclick="exportToMyRsnaFiles('{$zip-export-url}');"/>
 			</td>
 		</tr>
 	</xsl:if>
@@ -561,7 +575,7 @@
 </xsl:template>
 
 <xsl:template name="caseoftheday-button">
-	<xsl:if test="$user-is-admin = 'yes'">
+	<xsl:if test="($user-is-admin='yes') or ($user-is-publisher='yes')">
 		<tr>
 			<td>
 				<input type="button"
@@ -573,23 +587,34 @@
 	</xsl:if>
 </xsl:template>
 
-<xsl:template name="export-button">
-	<xsl:if test="string-length($export-url)!=0">
+<xsl:template name="ppt-export-button">
+	<xsl:if test="string-length($ppt-export-url)!=0">
 		<tr>
 			<td>
-				<input type="button" value="Download this Document" title="Download this document to your browser"
-					onclick="exportZipFile('{$export-url}','_self',event);"/>
+				<input type="button" value="Download Slides" title="Download this document to your browser as a slide presentation"
+					onclick="exportZipFile('{$ppt-export-url}','_self',event);"/>
+			</td>
+		</tr>
+	</xsl:if>
+</xsl:template>
+
+<xsl:template name="zip-export-button">
+	<xsl:if test="string-length($zip-export-url)!=0">
+		<tr>
+			<td>
+				<input type="button" value="Download Document" title="Download this document to your browser as a zip file"
+					onclick="exportZipFile('{$zip-export-url}','_self',event);"/>
 			</td>
 		</tr>
 	</xsl:if>
 </xsl:template>
 
 <xsl:template name="export-to-button">
-	<xsl:if test="(string-length($export-url)!=0) and ($prefs/User/export/site)">
+	<xsl:if test="(string-length($zip-export-url)!=0) and ($prefs/User/export/site)">
 		<tr>
 			<td>
 				<input type="button" value="Export to Destination" title="Export to another MIRC site"
-					onclick="exportTo('{$export-url}');"/>
+					onclick="exportTo('{$zip-export-url}');"/>
 			</td>
 		</tr>
 	</xsl:if>
@@ -606,12 +631,34 @@
 	</xsl:if>
 </xsl:template>
 
+<xsl:template name="revert-button">
+	<xsl:if test="string-length($revert-url)!=0">
+		<tr>
+			<td>
+				<input type="button" value="Revert to draft status"
+					onclick="openURL('{$revert-url}','_self');"/>
+			</td>
+		</tr>
+	</xsl:if>
+</xsl:template>
+
 <xsl:template name="publish-button">
 	<xsl:if test="$publish-url and not(contains($read-authorization,'*'))">
 		<tr>
 			<td>
 				<input type="button" value="Publish" title="Publish this document"
 					onclick="openURL('{$publish-url}','_self');"/>
+			</td>
+		</tr>
+	</xsl:if>
+</xsl:template>
+
+<xsl:template name="score-button">
+	<xsl:if test="($user-is-owner='yes') and (//ScoredQuestion)">
+		<tr>
+			<td>
+				<input type="button" value="Score Questions" title="Assign scores to questions"
+					onclick="assignScores();"/>
 			</td>
 		</tr>
 	</xsl:if>
@@ -636,22 +683,50 @@
 					<xsl:with-param name="text" select="normalize-space(href)"/>
 				</xsl:call-template>
 			</xsl:attribute>
+			<xsl:apply-templates select="@*[not(name()='href')]"/>
+			<xsl:apply-templates select="*[not(name()='href')] | text()"/>
 		</xsl:if>
-		<xsl:apply-templates select="*[not(name()='href')] | @* | text()"/>
+		<xsl:if test="not(href)">
+			<xsl:apply-templates select="@*"/>
+			<xsl:apply-templates select="* | text()"/>
+		</xsl:if>
 	</xsl:element>
 </xsl:template>
 
 <xsl:template match="iframe">
-	<iframe>
-		<xsl:if test="src">
-			<xsl:attribute name="src">
-				<xsl:call-template name="escape">
-					<xsl:with-param name="text" select="normalize-space(src)"/>
-				</xsl:call-template>
-			</xsl:attribute>
-		</xsl:if>
-		<xsl:apply-templates select="*[not(name()='src')] | @* | text()"/>
-	</iframe>
+	<xsl:element name="iframe">
+		<xsl:choose>
+			<xsl:when test="$display='page'">
+				<xsl:if test="src">
+					<xsl:attribute name="src">
+						<xsl:call-template name="escape">
+							<xsl:with-param name="text" select="normalize-space(src)"/>
+						</xsl:call-template>
+					</xsl:attribute>
+					<xsl:apply-templates select="@*[not(name()='src')]"/>
+					<xsl:apply-templates select="*[not(name()='src')] | text()"/>
+				</xsl:if>
+				<xsl:if test="not(src)">
+					<xsl:apply-templates select="@*"/>
+					<xsl:apply-templates select="* | text()"/>
+				</xsl:if>
+			</xsl:when>
+			<xsl:otherwise>
+				<xsl:apply-templates select="@*[not(name()='src')]"/>
+				<xsl:attribute name="src"></xsl:attribute>
+				<xsl:if test="src">
+					<xsl:attribute name="longdesc">
+						<xsl:call-template name="escape">
+							<xsl:with-param name="text" select="normalize-space(src)"/>
+						</xsl:call-template>
+					</xsl:attribute>
+				</xsl:if>
+				<xsl:if test="not(src)">
+					<xsl:attribute name="longdesc"><xsl:value-of select="@src"/></xsl:attribute>
+				</xsl:if>
+			</xsl:otherwise>
+		</xsl:choose>
+	</xsl:element>
 </xsl:template>
 
 <xsl:template name="escape">
@@ -995,6 +1070,12 @@
 	</tr>
 </xsl:template>
 
+<xsl:template match="ScoredQuestion">
+	<p class="ScoredQuestion" id="{@id}">
+		<xsl:apply-templates/>
+	</p>
+</xsl:template>
+
 <xsl:template match="quiz">
 	<p><xsl:apply-templates select="quiz-context"/></p>
 	<ol>
@@ -1074,6 +1155,7 @@
 		var codImage = '<xsl:value-of select="//image/@src"/>';
 		var category = "<xsl:value-of select="$category"/>";
 		var author = "<xsl:value-of select="$author"/>";
+		var userIsOwner = "<xsl:value-of select="$user-is-owner"/>";
 
 		var display = '<xsl:value-of select="$display"/>';
 		var inputType = '<xsl:value-of select="$input-type"/>';

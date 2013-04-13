@@ -60,7 +60,7 @@ public class MircDocumentStorageService extends AbstractPipelineStage implements
 
 		//Get the name of the template to use.
 		//No path information is allowed.
-		templateName = element.getAttribute("template").trim();
+		templateName = element.getAttribute("templateName").trim();
 		if (templateName.equals("")) templateName = defaultTemplateName;
 		else templateName = new File(templateName).getName();
 	}
@@ -163,7 +163,7 @@ public class MircDocumentStorageService extends AbstractPipelineStage implements
 				index.insertDocument( index.getKey(mdFile) );
 
 				//Record the activity
-				if (!docExists) ActivityDB.getInstance().increment(libID, "dcm");
+				if (!docExists) ActivityDB.getInstance().increment(libID, "dcm", null);
 
 				lastFileStored = fileObject.getFile();
 				lastTime = System.currentTimeMillis();

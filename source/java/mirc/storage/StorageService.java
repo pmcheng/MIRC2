@@ -19,6 +19,7 @@ import mirc.MircConfig;
 import mirc.prefs.Preferences;
 import mirc.ssadmin.StorageServiceAdmin;
 
+import mirc.util.MircDocument;
 import mirc.util.MyRsnaSession;
 import mirc.util.MyRsnaSessions;
 
@@ -80,6 +81,9 @@ public class StorageService extends Servlet {
 		String reqpath = req.getPath();
 		String reqpathLC = reqpath.toLowerCase();
 
+		User user = req.getUser();
+		String username = (user != null) ? user.getUsername() : null;
+
 		//Handle function requests first
 		Path path = req.getParsedPath();
 		String function = path.element(1).toLowerCase();
@@ -116,7 +120,7 @@ public class StorageService extends Servlet {
 		}
 
 		//Get the file and bail out if it doesn't exist.
-		File file = new File(root, req.getPath());
+		File file = new File(root, reqpath);
 		if (!file.exists()) {
 			res.setResponseCode( res.notfound );
 			res.send();
@@ -136,6 +140,29 @@ public class StorageService extends Servlet {
 				catch (Exception ex) { res.setResponseCode( res.notfound ); }
 				res.send();
 			}
+			else if (req.getParameter("params") != null) {
+				//This is a request for the key image parameters from the DICOM dataset
+				try {
+					DicomObject dob = new DicomObject(file);
+					Document doc = XmlUtil.getDocument();
+					Element params = doc.createElement("params");
+					params.setAttribute("Modality", dob.getElementValue("Modality"));
+					params.setAttribute("BitsAllocated", dob.getElementValue("BitsAllocated"));
+					params.setAttribute("BitsStored", dob.getElementValue("BitsStored"));
+					params.setAttribute("HighBit", dob.getElementValue("HighBit"));
+					params.setAttribute("PixelRepresentation", dob.getElementValue("PixelRepresentation"));
+					params.setAttribute("RescaleSlope", Float.toString(dob.getFloat("RescaleSlope", 1.0f)));
+					params.setAttribute("RescaleIntercept", Float.toString(dob.getFloat("RescaleIntercept", 0.0f)));
+					params.setAttribute("WindowCenter", Float.toString(dob.getFloat("WindowCenter")));
+					params.setAttribute("WindowWidth", Float.toString(dob.getFloat("WindowWidth")));
+					res.write(XmlUtil.toString(params));
+				}
+				catch (Exception ex) {
+					res.write("<params/>");
+				}
+				res.setContentType("xml");
+				res.send();
+			}
 			else if (req.getParameter("jpeg") != null) {
 				//This is a request for a JPEG image with window leveling.
 				try {
@@ -145,15 +172,39 @@ public class StorageService extends Servlet {
 					int wl = StringUtil.getInt( req.getParameter("wl") );
 					DicomObject dob = new DicomObject(file);
 					String name = file.getName();
-					name = name.substring(0, name.lastIndexOf(".")) + "["+wl+","+ww+"].jpeg";
+					name = name.substring(0, name.lastIndexOf(".")) + "["+/*wl+","+ww+"*/"WWWL].jpeg";
 					File windowedFile = new File(file.getParentFile(), name);
-					dob.saveAsWindowLeveledJPEG(windowedFile, frame, q, wl, ww);
+					dob.saveAsWindowLeveledJPEG(windowedFile, -1, -1, frame, q, wl, ww);
 					res.setContentType(windowedFile);
 					res.write(windowedFile);
+					res.disableCaching();
 					res.send();
 					windowedFile.delete();
 				}
 				catch (Exception ex) { res.setResponseCode( res.notfound ); res.send(); }
+			}
+			else if (req.getParameter("update") != null) {
+				//This is a request to resave an image with window leveling.
+				//This is done in a background thread because it could take
+				//time to update all the images if it's a series request.
+				try {
+					int frame = StringUtil.getInt( req.getParameter("frame"), 0);
+					int q = StringUtil.getInt( req.getParameter("q"), -1 );
+					int ww = StringUtil.getInt( req.getParameter("ww") );
+					int wl = StringUtil.getInt( req.getParameter("wl") );
+					File dir = file.getParentFile();
+					File docFile = new File(dir, req.getParameter("doc"));
+					boolean doSeries = (req.getParameter("series") != null);
+					Updater updater = new Updater(docFile, file, frame, q, wl, ww, doSeries);
+					updater.start();
+					res.write("<OK/>");
+				}
+				catch (Exception ex) {
+					res.write("<NOTOK/>");
+					logger.warn("Unable to update an image", ex);
+				}
+				res.setContentType("xml");
+				res.send();
 			}
 			else if (req.getParameter("bi") != null) {
 				//This is a request for a java.awt.image.BufferedImage
@@ -170,7 +221,7 @@ public class StorageService extends Servlet {
 						byte[] bytes = SerializerUtil.serialize(img);
 						res.write(bytes);
 					}
-					//Note 1: If it isn't an image, we return zero bytes, instead of notfound.
+					//Note 1: If it isn't an image, we return zero bytes instead of notfound.
 					//Note 2: We set a special content type to indicate this is a java object.
 					res.setHeader("Content-Type", "application/java.awt.image.BufferedImage");
 				}
@@ -213,7 +264,40 @@ public class StorageService extends Servlet {
 				return;
 			}
 
-			//It's a MIRCdocument. See if this is a zip export request.
+			//It's a MIRCdocument. See if this is a PPT export request.
+			String pptParameter = req.getParameter("ppt");
+			if (pptParameter != null) {
+
+				//Check whether export is authorized.
+				if (userIsAuthorizedTo("export", doc, req)) {
+					//Construct a MircDocument from the Document object
+					//to avoid parsing it again, but then we have to
+					//tell it the file.
+					MircDocument md = new MircDocument(doc);
+					md.setFile(file);
+
+					//Get the PPT file
+					File odpFile = md.getPresentation(userIsOwner(doc, req));
+					res.write(odpFile);
+					res.setContentType("pptx");
+					res.setContentDisposition(odpFile);
+					//NOTE: Do not disable caching; otherwise, the download will
+					//fail because the browser won't be able to store the file;
+
+					res.send();
+					odpFile.delete();
+					AccessLog.logAccess(req, doc);
+					return;
+				}
+				else {
+					//Export is not authorized.
+					res.setResponseCode( res.forbidden );
+					res.send();
+					return;
+				}
+			}
+
+			//It's not a PPT export. See if this is a zip export request.
 			String zipParameter = req.getParameter("zip");
 			if (zipParameter != null) {
 
@@ -222,7 +306,7 @@ public class StorageService extends Servlet {
 
 					//Export is authorized; make the file for the zip file
 					String extParameter = req.getParameter("ext", "").trim();
-					File zipFile = getFileForZip(doc, file, extParameter);
+					File zipFile = MircDocument.getFileForZip(doc, file, extParameter);
 
 					//Insert the path attribute (if necessary) for third party author tools.
 					//The path attribute starts with the ssid, as in: "ss1/docs/...".
@@ -247,14 +331,14 @@ public class StorageService extends Servlet {
 							res.setContentDisposition(zipFile);
 						}
 						else if (myrsnaParameter != null) {
-							String myRsnaResult = "The zip file was stored successfully.";
+							String myRsnaResult = "The case file was stored successfully.";
 							if (exportToMyRsna(req.getUser(), zipFile)) {
 								 //Record the activity
 								String ssid = path.element(1);
-								ActivityDB.getInstance().increment(ssid, "myrsna");
+								ActivityDB.getInstance().increment(ssid, "myrsna", username);
 							}
 							else {
-								myRsnaResult = "The zip file could not be stored.";
+								myRsnaResult = "The case file could not be stored.";
 							}
 							res.write( myRsnaResult );
 							res.setContentType("txt");
@@ -266,7 +350,7 @@ public class StorageService extends Servlet {
 					}
 					else {
 						res.write( "<html><head><title>ZipException</title></head>" );
-						res.write( "<body><h3>Server Exception</h3><p>Unable to create the zip file.</p></body></html>" );
+						res.write( "<body><h3>Server Exception</h3><p>Unable to create the case file.</p></body></html>" );
 						res.setContentType("html");
 					}
 					//NOTE: Do not disable caching; otherwise, the download will
@@ -298,10 +382,21 @@ public class StorageService extends Servlet {
 			}
 
 			//Read is authorized. See if the user wants to suppress
-			//transformation and just get the original XML. This is only
-			//allowed if the user is authorized to export the document.
-			if ((req.getParameter("xsl") != null) && userIsAuthorizedTo("export", doc, req)) {
-				res.write(file);
+			//transformation and just get the original XML. This feature
+			//is implemented for apps that perform their own rendering on
+			//phones and tablets.
+			if (req.getParameter("xsl") != null) {
+				//If the user is the owner, send the document without
+				//filtering; otherwise, remove the owner-only parts.
+				if (userIsOwner(doc, req)) res.write(file);
+				else {
+					String xslResource = "/storage/MIRCdocumentFilter.xsl";
+					Document xsl = XmlUtil.getDocument( FileUtil.getStream( xslResource ) );
+					Object[] params = new Object[] {
+						"today", StringUtil.getDate("").replaceAll("-","")
+					};
+					res.write( XmlUtil.getTransformedText( doc, xsl, params ) );
+				}
 				res.setContentType("xml");
 				res.disableCaching();
 				res.send();
@@ -319,20 +414,17 @@ public class StorageService extends Servlet {
 			res.send();
 
 			//Record the activity
+			Element e = XmlUtil.getFirstNamedChild(doc, "title");
+			String title = (e != null) ? e.getTextContent() : "";
 			String ssid = path.element(1).trim();
-			ActivityDB.getInstance().increment(ssid, "storage");
+			ActivityDB db = ActivityDB.getInstance();
+			db.increment(ssid, "storage", username);
+			//Log displays of non-draft documents
+			if (!rootElement.getAttribute("temp").equals("yes")) {
+				db.logDocumentDisplay(ssid, username, reqpath, title);
+			}
 			AccessLog.logAccess(req, doc);
 		}
-	}
-
-	private static String makeNameFromParent(File file) {
-		file = new File(file.getAbsolutePath());
-		File parent = file.getParentFile();
-		String name = parent.getName();
-		while ((name.length() < 10) && ( (parent=parent.getParentFile()) != null )) {
-			name = parent.getName() + "_" + name;
-		}
-		return name;
 	}
 
 	/**
@@ -584,14 +676,28 @@ public class StorageService extends Servlet {
 			//The owner is authorized to do anything.
 			if (userIsOwner(docXML, req)) return true;
 
-			//For the delete action, only the owner or admin is ever authorized.
-			//Therefore, if the action is delete, return false now.
-			if (action.equals("delete")) return false;
+			//For the delete action, only the owner or admin is authorized,
+			//unless the document is a draft document and has no owner.
+			if (action.equals("delete")) {
+				if (req.userHasRole("author")) {
+					Element root = docXML.getDocumentElement();
+					if (root.getAttribute("temp").equals("yes")) {
+						Element auth = XmlUtil.getFirstNamedChild(root, "authorization");
+						if (auth == null) return true;
+						Element ownerElement = XmlUtil.getFirstNamedChild(auth, "owner");
+						if (ownerElement.getTextContent().trim().equals("")) return true;
+					}
+				}
+				return false;
+			}
 
 			//The read access has a special case: if the document has a publish
 			//request and the user is a publisher, the user can read the document.
 			if (docXML.getDocumentElement().getAttribute("pubreq").equals("yes")
 					&& req.userHasRole("publisher")) return true;
+
+			//Update access is restricted to authenticated users with the author role.
+			if (action.equals("update") && !req.userHasRole("author")) return false;
 
 			//For non-owners or non-authenticated users, the rule is that if an action
 			//authorization does not exist in the document, read and export actions are
@@ -710,6 +816,8 @@ public class StorageService extends Servlet {
 
 		Path path = req.getParsedPath();
 
+		boolean isDraft = doc.getDocumentElement().getAttribute("temp").equals("yes");
+
 		//Set the parameter for today's date
 		String today = StringUtil.getDate("").replaceAll("-","");
 
@@ -738,7 +846,10 @@ public class StorageService extends Servlet {
 		//Set the parameter indicating whether the user is an admin
 		String userisadmin = (req.userHasRole("admin") ? "yes" : "no");
 
-		//Set the parameter indicating whether the user is an admin
+		//Set the parameter indicating whether the user is a publisher
+		String userispublisher = (req.userHasRole("publisher") ? "yes" : "no");
+
+		//Set the parameter indicating whether the user is an author
 		String userisauthor = (req.userHasRole("author") ? "yes" : "no");
 
 		//Set up the links for:
@@ -747,6 +858,7 @@ public class StorageService extends Servlet {
 		//	sorting the images
 		//	publishing
 		String editurl = "";
+		String reverturl = "";
 		String addurl = "";
 		String sorturl = "";
 		String publishurl = "";
@@ -754,7 +866,10 @@ public class StorageService extends Servlet {
 			editurl = "/aauth" + docIndexEntry;
 			addurl = "/addimg" + docIndexEntry;
 			sorturl = "/sort" + docIndexEntry;
-			if (req.userHasRole("publisher")) {
+			if (!isDraft && !doc.getDocumentElement().getAttribute("draftpath").equals("")) {
+				reverturl = "/revert" + docIndexEntry;
+			}
+			if (!isDraft && req.userHasRole("publisher")) {
 				publishurl = "/publish" + docIndexEntry;
 			}
 		}
@@ -764,15 +879,16 @@ public class StorageService extends Servlet {
 		if (userIsAuthorizedTo("delete", doc, req))
 			deleteurl = "/storage/delete" + docIndexEntry;
 
-		//Set up the link for exporting the document
-		String exporturl = "";
-		if (userIsAuthorizedTo("export", doc, req))
-			exporturl = docPath + "?zip";
-
-		//Set up the link for saving the images from this document to the user's file cabinet
+		//Set up the links for exporting the document
+		boolean canExport = userIsAuthorizedTo("export", doc, req);
+		String pptexporturl = "";
+		String zipexporturl = "";
 		String filecabineturl = "";
-		if (req.isFromAuthenticatedUser() && !exporturl.equals(""))
+		if (canExport) {
+			pptexporturl = docPath + "?ppt";
+			zipexporturl = docPath + "?zip";
 			filecabineturl = "/files/save" + docPath;
+		}
 
 		//Set the parameter that identifies this as a preview, in which case
 		//certain functions are disabled in the MIRCdocument display.
@@ -805,14 +921,17 @@ public class StorageService extends Servlet {
 			"user-has-myrsna-acct",	userhasmyrsnaacct,
 			"user-is-owner",		userisowner,
 			"user-is-admin",		userisadmin,
+			"user-is-publisher",	userispublisher,
 			"user-can-post",		userisauthor,
 
 			"edit-url",				editurl,
+			"revert-url",			reverturl,
 			"add-url",				addurl,
 			"sort-url",				sorturl,
 			"publish-url",			publishurl,
 			"delete-url",			deleteurl,
-			"export-url",			exporturl,
+			"ppt-export-url",		pptexporturl,
+			"zip-export-url",		zipexporturl,
 			"filecabinet-url",		filecabineturl,
 
 			"preview",				preview,
@@ -870,36 +989,6 @@ public class StorageService extends Servlet {
 			}
 		}
 		return "";
-	}
-
-	/**
-	 * Construct a File to contain a MIRCdocument zip export. The filename
-	 * consists of the name of the parent directory, an underscore, and the
-	 * text content of the MIRCdocument's title element (modified to make an
-	 * acceptable filename, with whitespace, slashes, backslashes, and ampersands
-	 * replaced by underscores). The extension is ".zip" unless the extParameter
-	 * is supplied as non-null and non-empty, in which case the extension is
-	 * "." + extParameter.
-	 * @param doc the MIRCdocument XML Document object.
-	 * @param file the file containing the MIRCdocument.
-	 * @param extParameter the desired extension (with no leading period). If this parameter
-	 * is null or empty, the default extension ".zip" is supplied.
-	 * @return the file (note that this is only a File object; this method does not
-	 * insert the zip contents).
-	 */
-	public static File getFileForZip(Document doc, File file, String extParameter) {
-		String ext = ".zip";
-		if ((extParameter != null) && !extParameter.equals("")) ext = "." + extParameter;
-		File parent = file.getParentFile();
-		String name = makeNameFromParent(file);
-		Element titleEl = XmlUtil.getFirstNamedChild(doc, "title");
-		if (titleEl != null) {
-			String title = titleEl.getTextContent().trim();
-			title = title.replaceAll("\\s+", "_");
-			if (title.length() > 0) name = title + "_" + name;
-		}
-		name += ext;
-		return new File(parent, name);
 	}
 
 	/**
@@ -965,6 +1054,39 @@ public class StorageService extends Servlet {
 			}
 		}
 		return "Unable to export the zip file";
+	}
+
+	class Updater extends Thread {
+		MircDocument md;
+		DicomObject dicomObject;
+		int frame;
+		int ww;
+		int wl;
+		int q;
+		boolean doSeries;
+
+		public Updater(File docFile, File imageFile, int frame, int q, int ww, int wl, boolean doSeries) throws Exception {
+			this.md = new MircDocument(docFile);
+			this.dicomObject = new DicomObject(imageFile);
+			this.frame = frame;
+			this.q = q;
+			this.ww = ww;
+			this.wl = wl;
+			this.doSeries = doSeries;
+		}
+		public void run() {
+			try {
+				if (doSeries) {
+					md.updateSeries(dicomObject, frame, q, ww, wl);
+				}
+				else {
+					md.updateImage(dicomObject, frame, q, ww, wl);
+				}
+			}
+			catch (Exception unable) {
+				logger.warn("Unable to update "+(doSeries ? "series" : "image")+" for "+dicomObject.getFile());
+			}
+		}
 	}
 
 }

@@ -71,6 +71,7 @@ function mirc_onload() {
 	setWheelDriver();
 	window.focus();
 	if (imageSection) IMAGES.load();
+	setupScoredQuiz();
 }
 
 function splitHandler() {
@@ -116,8 +117,8 @@ function deleteDocumentHandler() {
 	var req = new AJAX();
 	req.GET(deleteURL, req.timeStamp(), null);
 	if (req.success()) {
-		alert("The document was deleted.");
-		history.go(-2);
+		window.opener="dummy"
+		window.close();
 	}
 	else alert("The attempt to delete the files failed.");
 }
@@ -521,7 +522,7 @@ function disableButton(id, display) {
 function enableButton(id, display) {
 	var b = document.getElementById(id)
 	b.disabled = false;
-	b.style.backgroundColor = 'dodgerblue';
+	b.style.backgroundColor = '#2977b9';
 	b.style.color = 'white';
 	b.style.fontWeight = 'bold';
 	b.style.visibility = 'visible';
@@ -646,11 +647,10 @@ function fetchModality(myEvent) {
 			openURL(imagePath,"_self");
 		else if (myEvent.shiftKey) {
 			//shift key redisplays the current image
-			//this removes the DICOM viewer applet, if loaded
 			displayImage();
 		}
 		else {
-			displayImage();
+			openURL(imagePath,"_self");
 			/* //Disable the DICOM viewer for now
 			//no modifiers: request the DICOM viewer applet
 			var place = document.getElementById('rimagecenter');
@@ -1096,4 +1096,91 @@ function newPostHandler() {
 	form.submit();
 }
 
+//ScoredQuestion functions
+function setupScoredQuiz() {
+	var sqPs = document.getElementsByTagName("P");
+	for (var k=0; k<sqPs.length; k++) {
+		var sqP = sqPs[k];
+		if (sqP.className == "ScoredQuestion") {
+			var qid = sqP.id;
+			var req = new AJAX();
+			req.GET("/quiz/"+qid, req.timeStamp(), null);
+			if (req.success()) {
+				sqP.appendChild(document.createElement("BR"));
 
+				var xml = req.responseXML();
+				var root = xml ? xml.firstChild : null;
+				if (root) {
+					var score = root.getAttribute("score");
+					score = score ? score : "";
+					var value = root.getAttribute("value");
+					value = value ? value : "";
+					if (userIsOwner == "yes") {
+						var p = document.createElement("P");
+						p.className = "center";
+						var button = document.createElement("INPUT");
+						button.type = "button";
+						button.onclick = getAnswerSummary;
+						button.value = "Get Answer Summary";
+						button.qid = qid;
+						p.appendChild(button);
+						sqP.appendChild(p);
+					}
+					else {
+						if (root.getAttribute("isClosed") == "true") {
+							sqP.appendChild(document.createTextNode(value));
+							sqP.appendChild(document.createElement("BR"));
+							sqP.appendChild(document.createTextNode("Score: "+score));
+						}
+						else {
+							var p = document.createElement("P");
+							p.className = "center";
+							var input = document.createElement("INPUT");
+							input.type = "text";
+							input.value = value;
+							input.qid = qid;
+							input.className = "sqText";
+							p.appendChild(input);
+							p.appendChild(document.createElement("BR"));
+							var button = document.createElement("INPUT");
+							button.type = "button";
+							button.onclick = submitScoredQuestionAnswer;
+							button.value = "Submit";
+							button.className = "sqButton";
+							button.inputNode = input;
+							p.appendChild(button);
+							sqP.appendChild(p);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+function getAnswerSummary(theEvent) {
+	var source = getSource(getEvent(theEvent));
+	var qid = source.qid;
+	var url = "/quizanswers"+docIndexEntry+"?qid="+qid;
+	openURL(url, "_blank");
+}
+function submitScoredQuestionAnswer(theEvent) {
+	var source = getSource(getEvent(theEvent));
+	var input = source.inputNode;
+	var text = input.value;
+	var qid = input.qid;
+	var req = new AJAX();
+	req.POST("/quiz/"+qid, "value="+encodeURIComponent(text)+"&"+req.timeStamp(), scoreResult);
+}
+function scoreResult(req) {
+	if (req.success()) {
+		var xml = req.responseXML();
+		var root = xml ? xml.firstChild : null;
+		if (root) alert(root.tagName);
+		else alert("root is null");
+	}
+}
+function assignScores() {
+	var url = "/quizmgr"+docIndexEntry;
+	openURL(url, "_blank");
+}

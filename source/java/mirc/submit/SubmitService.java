@@ -138,7 +138,6 @@ public class SubmitService extends Servlet {
 		logger.debug("...path:             "+req.path);
 		logger.debug("...Content-Type:     "+req.getContentType());
 
-
 		//If this request is not a multipart form and the user is not authenticated,
 		//return a 401 to trigger a resubmission with credentials. This is for
 		//applications like FileSender or the third-party authoring tools.
@@ -317,7 +316,7 @@ public class SubmitService extends Servlet {
 				logger.debug("...unable to update the site index");
 			}
 			//Record the activity
-			if (!isDocumentUpdate) ActivityDB.getInstance().increment(ssid, "sub");
+			if (!isDocumentUpdate) ActivityDB.getInstance().increment(ssid, "sub", username);
 
 		}
 		finish(res, ui, ssid, result, suppress);
@@ -394,7 +393,7 @@ public class SubmitService extends Servlet {
 		while (zipEntries.hasMoreElements()) {
 			ZipEntry entry = (ZipEntry)zipEntries.nextElement();
 			if (!entry.isDirectory()) {
-				//Eliminate the path inUIion.
+				//Eliminate the path.
 				String name = entry.getName().replace("\\", "/");
 				name = name.substring(name.lastIndexOf("/")+1);
 				//Store the entry;
@@ -407,6 +406,12 @@ public class SubmitService extends Servlet {
 						Element root = doc.getDocumentElement();
 						if (root.getTagName().equals("MIRCdocument")) {
 							xmlFile = checkFilename(outFile);
+							if (!root.getAttribute("temp").equals("")
+									|| !root.getAttribute("draftpath").equals("")) {
+								root.removeAttribute("temp");
+								root.removeAttribute("draftpath");
+								FileUtil.setText(xmlFile, XmlUtil.toString(doc));
+							}
 						}
 					}
 					catch (Exception doesNotParse) {

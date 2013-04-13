@@ -26,7 +26,6 @@ import org.w3c.dom.Element;
 /**
  * Class to sort the images in the image-section of a MIRCdocument..
  * This service accepts only a GET and returns the modified MIRCdocument.
- * containing files for insertion in MIRCdocuments.
  */
 public class SortImagesService extends Servlet {
 
@@ -45,7 +44,7 @@ public class SortImagesService extends Servlet {
 	}
 
 	/**
-	 * Sort the imagge-section and return the modified MIRCdocument.
+	 * Sort the image-section and return the modified MIRCdocument.
 	 * @param req The HttpServletRequest provided by the servlet container.
 	 * @param res The HttpServletResponse provided by the servlet container.
 	 * @throws ServletException if the servlet cannot handle the request.

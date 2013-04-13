@@ -3,6 +3,7 @@
 
 <xsl:param name="prefs"/>
 <xsl:param name="ssid"/>
+<xsl:param name="docpath"/>
 <xsl:param name="dirpath"/>
 <xsl:param name="authpath"/>
 <xsl:param name="date"/>
@@ -14,6 +15,7 @@
 <xsl:param name="activetab">1</xsl:param>
 
 <xsl:param name="draft" select="/MIRCdocument/@temp"/>
+<xsl:param name="draftpath" select="/MIRCdocument/@draftpath"/>
 
 <xsl:template match="*|@*">
   <xsl:copy>
@@ -86,7 +88,10 @@
 </xsl:variable>
 <script>
 	var ssid = "<xsl:value-of select="$ssid"/>";
+	var docpath = "<xsl:value-of select="$docpath"/>";
 	var dirpath = "<xsl:value-of select="$dirpath"/>";
+	var draft = "<xsl:value-of select="@temp"/>";
+	var draftpath = "<xsl:value-of select="$draftpath"/>";
 	var mode = "<xsl:value-of select="$mode"/>";
 	var show = <xsl:value-of select="$as-mode"/>;
 	var firstTabAttribute = "<xsl:value-of select="@first-tab"/>";
@@ -201,6 +206,12 @@
 				<xsl:with-param name="onclick">objectInsertQuizClicked();</xsl:with-param>
 				<xsl:with-param name="src">/aauth/buttons/insertquiz.gif</xsl:with-param>
 				<xsl:with-param name="id">insertquiz-button</xsl:with-param>
+			</xsl:call-template>
+			<xsl:call-template name="tool">
+				<xsl:with-param name="title">Insert a scored question</xsl:with-param>
+				<xsl:with-param name="onclick">objectInsertScoredQuestionClicked();</xsl:with-param>
+				<xsl:with-param name="src">/aauth/buttons/insertscoredquestion.png</xsl:with-param>
+				<xsl:with-param name="id">insertscoredquestion-button</xsl:with-param>
 			</xsl:call-template>
 			<xsl:call-template name="tool">
 				<xsl:with-param name="title">Insert a comment block</xsl:with-param>
@@ -547,7 +558,7 @@
 			Enter the title of the document as you want it displayed for normal viewing.
 		</p>
 		<textarea class="title">
-			<xsl:if test="not($draft='yes')">
+			<xsl:if test="not($draft='yes') or $draftpath">
 				<xsl:value-of select="$norm-title"/>
 			</xsl:if>
 		</textarea>
@@ -558,7 +569,7 @@
 			want this feature, you can leave this field blank.
 		</p>
 		<textarea class="title" hideable="true">
-			<xsl:if test="not($draft='yes')">
+			<xsl:if test="not($draft='yes') or $draftpath">
 				<xsl:value-of select="$norm-alttitle"/>
 			</xsl:if>
 		</textarea>
@@ -837,6 +848,12 @@
 						</input>
 					</td>
 				</tr>
+				<tr>
+					<td>Number of images:</td>
+					<td>
+						<xsl:value-of select="count(//image-section/image)"/>
+					</td>
+				</tr>
 			</table>
 		</p>
 		<div>
@@ -943,7 +960,7 @@
 					<td rowspan="3" class="pmlabel">Read:</td>
 					<td>
 						<input type="radio" name="read" value="public">
-							<xsl:if test="contains($read-field,'*')">
+							<xsl:if test="contains($read-field,'*') and not($draft='yes')">
 								<xsl:attribute name="checked">
 									<xsl:text>true</xsl:text>
 								</xsl:attribute>
@@ -955,7 +972,7 @@
 				<tr>
 					<td>
 						<input type="radio" name="read" value="private">
-							<xsl:if test="string-length($read-field)=0">
+							<xsl:if test="string-length($read-field)=0 and not($draft='yes')">
 								<xsl:attribute name="checked">
 									<xsl:text>true</xsl:text>
 								</xsl:attribute>
@@ -967,7 +984,7 @@
 				<tr>
 					<td>
 						<input type="radio" name="read" value="specify">
-							<xsl:if test="not(contains($read-field,'*')) and not(string-length($read-field)=0)">
+							<xsl:if test="(not(contains($read-field,'*')) and not(string-length($read-field)=0)) or ($draft='yes')">
 								<xsl:attribute name="checked">
 									<xsl:text>true</xsl:text>
 								</xsl:attribute>
@@ -978,6 +995,9 @@
 						<input type="text" style="width:310">
 							<xsl:attribute name="value">
 								<xsl:value-of select="$read-field"/>
+								<xsl:if test="not(contains($read-field,'department')) and ($draft='yes')">
+									<xsl:text>,department</xsl:text>
+								</xsl:if>
 							</xsl:attribute>
 						</input>
 					</td>
@@ -994,7 +1014,7 @@
 					<td rowspan="3" class="pmlabel">Update:</td>
 					<td>
 						<input type="radio" name="update" value="public">
-							<xsl:if test="contains($update-field,'*')">
+							<xsl:if test="contains($update-field,'*') and not($draft='yes')">
 								<xsl:attribute name="checked">
 									<xsl:text>true</xsl:text>
 								</xsl:attribute>
@@ -1006,7 +1026,7 @@
 				<tr>
 					<td>
 						<input type="radio" name="update" value="private">
-							<xsl:if test="string-length($update-field)=0">
+							<xsl:if test="string-length($update-field)=0 or ($draft='yes')">
 								<xsl:attribute name="checked">
 									<xsl:text>true</xsl:text>
 								</xsl:attribute>
@@ -1018,7 +1038,7 @@
 				<tr>
 					<td>
 						<input type="radio" name="update" value="specify">
-							<xsl:if test="not(contains($update-field,'*')) and not(string-length($update-field)=0)">
+							<xsl:if test="not(contains($update-field,'*')) and not(string-length($update-field)=0) and not($draft='yes')">
 								<xsl:attribute name="checked">
 									<xsl:text>true</xsl:text>
 								</xsl:attribute>
@@ -1165,7 +1185,7 @@
 		</p>
 		<div>
 			<xsl:choose>
-				<xsl:when test="phi">
+				<xsl:when test="phi and ($draft!='yes')">
 					<xsl:for-each select="phi/study">
 						<xsl:call-template name="phi-study">
 							<xsl:with-param name="study" select="."/>
@@ -1357,6 +1377,17 @@
 				</td>
 			</tr>
 		</table>
+	</p>
+</xsl:template>
+
+<xsl:template match="ScoredQuestion">
+	<p class="p4" item-type="scoredquestion" id="{@id}">
+		<span class="s6">Scored Question: </span>
+		<xsl:call-template name="textarea-content">
+			<xsl:with-param name="node" select="."/>
+			<xsl:with-param name="class">sectionP</xsl:with-param>
+			<xsl:with-param name="min-rows">3</xsl:with-param>
+		</xsl:call-template>
 	</p>
 </xsl:template>
 
@@ -1702,23 +1733,17 @@
 	<xsl:param name="ref"/>
 	<xsl:param name="onclick"/>
 	<xsl:param name="ondblclick"/>
-	<img class="fileImg">
+	<img class="fileImg" onclick="{$onclick}" onmouseover="imgMouseEnter(event);" onmouseout="imgMouseLeave(event);">
 		<xsl:if test="string-length(normalize-space($ref)) != 0">
 			<xsl:attribute name="ref">
 				<xsl:value-of select="$ref"/>
 			</xsl:attribute>
 		</xsl:if>
-		<xsl:attribute name="onclick">
-			<xsl:value-of select="$onclick"/>
-		</xsl:attribute>
 		<xsl:if test="string-length(normalize-space($ondblclick)) != 0">
 			<xsl:attribute name="ondblclick">
 				<xsl:value-of select="$ondblclick"/>
 			</xsl:attribute>
 		</xsl:if>
-		<xsl:attribute name="title">
-			<xsl:value-of select="$image/@src"/>
-		</xsl:attribute>
 		<xsl:choose>
 			<xsl:when test="starts-with($image/@src,'http://') or starts-with($image/@src,'/')">
 				<xsl:copy-of select="$image/@src"/>

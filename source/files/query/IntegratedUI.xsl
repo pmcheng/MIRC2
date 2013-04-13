@@ -46,6 +46,7 @@
 	<script language="JavaScript" type="text/javascript" src="/JSSplitPane.js">;</script>
 	<script language="JavaScript" type="text/javascript" src="/JSScrollableTable.js">;</script>
 	<script language="JavaScript" type="text/javascript" src="/JSMenu.js">;</script>
+	<script language="JavaScript" type="text/javascript" src="/activity/SummaryPopup.js">;</script>
 	<script language="JavaScript" type="text/javascript" src="/query/QueryServicePopups.js">;</script>
 	<script language="JavaScript" type="text/javascript" src="/query/IntegratedUIConfs.js">;</script>
 	<script language="JavaScript" type="text/javascript" src="/query/IntegratedUIFiles.js">;</script>
@@ -124,7 +125,13 @@
 		<!--<div class="L1">Cases</div>-->
 		<div class="L2" id="MyDocuments"><a href="javascript:queryMineNew();">My Cases</a><br/></div>
 		<div class="L2" id="AllDocuments"><a href="javascript:queryAllNew();">Completed Cases</a><br/></div>
-		<div class="L2" id="DraftDocuments"><a href="javascript:queryTemp();">Draft Cases</a><br/></div>
+		<div class="L2" id="DraftDocuments">
+			<a href="javascript:queryTemp();"
+			   			title="Draft cases can be viewed and claimed by any user with the author privilege.">
+				Draft Cases
+			</a>
+			<br/>
+		</div>
 		<div class="L2" id="ApprovalQueue"><a href="javascript:approvalQueueNew();">Case Approval Queue</a><br/></div>
 
 		<div id="Conferences">
@@ -138,14 +145,16 @@
 		</div>
 
 		<div class="L2x" id="CaseOfTheDay">
-			<a href="{news/url}" target="shared" title="{news/title}">Case of the Day</a>
+			<xsl:variable name="url" select="normalize-space(news/url)"/>
+			<xsl:variable name="title" select="normalize-space(news/title)"/>
+			<a href="{$url}" target="shared" xtitle="{$title}">Case of the Day</a>
 			<br/>
 			<xsl:if test="news/image">
 				<img class="cod"
-					 src="{news/image}"
+					 src="{normalize-space(news/image)}"
 					 width="128"
-					 title="{news/title}"
-					 onclick="window.open('{news/url}', 'shared');"/>
+					 xtitle="{$title}"
+					 onclick="window.open('{$url}', 'shared');"/>
 				<br/>
 			</xsl:if>
 		</div>
@@ -212,6 +221,8 @@
 		<div class="L2"><a href="/logs?home=/query">Log Viewer</a><br/></div>
 		<div class="L2"><a href="/level">Logger Levels</a><br/></div>
 		<div class="L2"><a href="javascript:listCookies();">List Cookies</a><br/></div>
+		<hr/>
+		<div class="L2"><a href="/reset" title="Reset the DICOM and TCE Service templates and clear the cache">Reset Templates</a><br/></div>
 	</div>
 </xsl:template>
 
@@ -221,14 +232,16 @@
 
 <xsl:template name="footer">
 <div class="footer">
+    <div class="footerlogo">
+    	<img src="/mirc/images/RSNAinformaticsLogo.jpg"/>
+    	<span class="productname">MIRC TEACHING FILE SYSTEM</span>
+	</div>
 	<div class="footerRight">
-		&#160;&#160;<a href="/query?UI=classic">Classic UI</a>&#160;&#160;
+		<a href="/query?UI=classic">Classic UI</a>&#160;&#160;
 		|&#160;&#160;<a href="javascript:showHelpPopup();">Help</a>&#160;&#160;
 		|&#160;&#160;<a href="javascript:showAboutPopup();">About TFS</a>&#160;&#160;
 		|&#160;&#160;<a href="http://mircwiki.rsna.org/index.php?title=MIRC_Articles" target="wiki">RSNA MIRC Wiki</a>&#160;&#160;
 	</div>
-	<img src="/query/RSNA.jpg"/>
-	<span class="productname">TEACHING FILE SYSTEM</span>
 </div>
 </xsl:template>
 

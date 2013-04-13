@@ -440,7 +440,7 @@ public class MircUserManagerServlet extends Servlet {
 			}
 			sb.append("<input name=\"r"+i+"\" type=\"hidden\" value=\""+rolenames[i]+"\"/></th>\n" );
 		}
-		sb.append( "  <th class=\"thleft\">Password</th>\n" );
+		sb.append( "  <th class=\"thleft\" colspan=\"3\">Password</th>\n" );
 		sb.append( " </tr>\n" );
 		sb.append( "</thead>\n" );
 	}
@@ -496,6 +496,7 @@ public class MircUserManagerServlet extends Servlet {
 				"<html>\n"
 			+	" <head>\n"
 			+	"  <title>User Manager</title>\n"
+			+	"  <link rel=\"Stylesheet\" type=\"text/css\" media=\"all\" href=\"/BaseStyles.css\"></link>\n"
 			+	"  <link rel=\"Stylesheet\" type=\"text/css\" media=\"all\" href=\"/JSPopup.css\"></link>\n"
 			+	"  <link rel=\"Stylesheet\" type=\"text/css\" media=\"all\" href=\"/UserManagerServlet.css\"></link>\n"
 			+	"  <link rel=\"Stylesheet\" type=\"text/css\" media=\"all\" href=\"/users/MircUserManagerServlet.css\"></link>\n"
@@ -544,6 +545,7 @@ public class MircUserManagerServlet extends Servlet {
 		sb.append(
 				"    </table>\n"
 			+	"   </form>\n"
+			+	"   <p>Suggestion: Assign all users the \"department\" role.</p>\n"
 			+	"  </center>\n"
 			+	" </body>\n"
 			+	"</html>\n"

@@ -43,7 +43,7 @@ window.onresize = setSize;
 
 //These variables set the border-colors of selected and unselected objects.
 //Note: these colors must correspond to the values in the editor-styles.cs file.
-var unselColor = "#88bbff";
+var unselColor = "#eeeeee";
 var selColor = "red";
 
 //These variables define the state of the editor.
@@ -274,10 +274,10 @@ function fileDblClicked(theEvent) {
 	var theEvent = getEvent(theEvent)
 	stopEvent(theEvent);
 	var source = getSource(theEvent);
-	var filename = source.getAttribute("title");
+	var url = source.xml.getAttribute("fileURL");
 	deselectAll();
 	lastFileClicked = -1;
-	var path = "/file/service/"+currentPath+"/"+filename;
+	var path = "/files/"+url;
 	window.open(path,"_blank");
 	setToolEnables();
 }
@@ -320,6 +320,7 @@ function setToolEnables() {
 			setToolEnable("insertiframe-button",true);
 			setToolEnable("insertpatient-button",true);
 			setToolEnable("insertquiz-button",true);
+			setToolEnable("insertscoredquestion-button",true);
 			setToolEnable("insertcommentblock-button",true);
 			setToolEnable("removeobject-button",itemIsSelected);
 			setToolEnable("promoteobject-button",itemIsSelected);
@@ -335,6 +336,7 @@ function setToolEnables() {
 			setToolEnable("insertimage-button",isPaletteImageSelected());
 			setToolEnable("insertpatient-button",false);
 			setToolEnable("insertquiz-button",false);
+			setToolEnable("insertscoredquestion-button",false);
 			setToolEnable("insertcommentblock-button",false);
 			setToolEnable("removeobject-button",imageIsSelected);
 			setToolEnable("promoteobject-button",imageIsSelected);
@@ -389,6 +391,7 @@ function setAllItemTools(enable) {
 	setToolEnable("insertiframe-button",enable);
 	setToolEnable("insertpatient-button",enable);
 	setToolEnable("insertquiz-button",enable);
+	setToolEnable("insertscoredquestion-button",enable);
 	setToolEnable("insertcommentblock-button",enable);
 	setToolEnable("removeobject-button",enable);
 	setToolEnable("promoteobject-button",enable);
@@ -531,11 +534,10 @@ function sectionImageClicked(myEvent) {
 }
 
 //Handle a double click of an image.
-//Swap the editor divs around to show the SVG editor.
+//Swap the editor divs around to show the selected editor.
 function sectionImageDblClicked(myEvent) {
 	var source = getSource(getEvent(myEvent));
-	var basesrc = source.getAttribute("base-image");
-	if ((basesrc == null) || (basesrc == "")) {
+	if (!imageHasBeenSaved(source)) {
 		alert("This image has been inserted since\n" +
 			  "the document was last saved.\n\n" +
 			  "The document must be saved before\n" +
@@ -549,45 +551,71 @@ function sectionImageDblClicked(myEvent) {
 		//Open the image for creating captions
 		loadCaptionEditor(source);
 	}
+	else if (evt.altKey) {
+		//Open the image for window width and level
+		loadWWWLEditor(source);
+	}
 	else {
 		//Open the image for annotation
-		var imageSrc = dirpath + source.getAttribute("base-image");
-		var svgSrc;
-		//If this is a new annotation, start with the svg file in
-		//the root of the servlet. If this is an existing
-		//annotation, start with the one identified by the
-		//annotation attribute of the img element.
-		var annSrc = source.getAttribute("ansvgsrc");
-		if ((annSrc == null) || (annSrc == ""))
-			svgSrc = "/aauth/svg-editor.svg"
-		else
-			svgSrc = dirpath + annSrc;
-		loadSVGEditor(source,svgSrc,imageSrc);
+		runSVGEditor(source);
 	}
+}
+
+//Set the annotation editor div and handle the button click event.
+function startSVGEditor() {
+	var div = document.getElementById("imginfo");
+	if (div) {
+		runSVGEditor(div.source);
+	}
+}
+function runSVGEditor(source) {
+	removeImgInfo();
+	var imageSrc = dirpath + source.getAttribute("base-image");
+	var svgSrc;
+	//If this is a new annotation, start with the svg file in
+	//the root of the servlet. If this is an existing
+	//annotation, start with the one identified by the
+	//annotation attribute of the img element.
+	var annSrc = source.getAttribute("ansvgsrc");
+	if ((annSrc == null) || (annSrc == ""))
+		svgSrc = "/aauth/svg-editor.svg"
+	else
+		svgSrc = dirpath + annSrc;
+	loadSVGEditor(source,svgSrc,imageSrc);
+}
+
+function imageHasBeenSaved(source) {
+	var basesrc = source.getAttribute("base-image");
+	if ((basesrc == null) || (basesrc == "")) {
+		return false;
+	}
+	return true;
 }
 
 //Handle image selection in either the palette or the image-section.
 //Handle ctrl-clicks and shift-clicks. Set the border colors appropriately.
 function handleSelection(item,list,lastClick,myEvent) {
 	var last = lastClick;
+	var evt = getEvent(myEvent);
+	var source = getSource(evt);
 	//Handle alt-clicks
-	if (getEvent(myEvent).altKey) {
+	if (evt.altKey) {
 		var filename = item.getAttribute("title");
 		if ((filename.toLowerCase().lastIndexOf(".dcm") == filename.length - 4) ||
 			(filename.replace(/[\.\d]/g,"").length == 0)) {
-			var path = "/file/service/"+currentPath+"/"+filename+"?list";
+			var path = "/files/"+source.xml.getAttribute("fileURL")+"?list";
 			window.open(path,"_blank");
 			deselectAll();
 			last = -1;
 		}
 	}
 	//Handle ctrl-clicks
-	else if (getEvent(myEvent).ctrlKey) {
+	else if (evt.ctrlKey) {
 		if (isSelected(item)) deselect(item);
 		else select(item);
 	}
 	//Handle shift-clicks
-	else if (getEvent(myEvent).shiftKey && (lastClick != -1)) {
+	else if (evt.shiftKey && (lastClick != -1)) {
 		var sel = false;
 		var clicked;
 		for (var i=0; i<list.length; i++) {
@@ -828,7 +856,10 @@ function saveClicked() {
 
 	//Require that there be a non-blank title
 	if (!hasTitle()) {
-		alert("The document must have a title.");
+		//Switch to the Title section
+		var n = getTitleSectionNumber();
+		if (n >= 0) showSection(n);
+		alert("The document must have a title\nbefore it can be saved.");
 		return;
 	}
 
@@ -840,6 +871,41 @@ function saveClicked() {
 	form.activetab.value = currentSection;
 	window.onbeforeunload = "";
 	form.submit();
+}
+
+function getTitleSectionNumber() {
+	var child = document.getElementById("editor").firstChild;
+	var n = 0;
+	while (child != null) {
+		if (child.nodeName.toLowerCase() == "div") {
+			if (child.getAttribute("type") == 'title') return n;
+			else n++;
+		}
+		child = child.nextSibling;
+	}
+	return -1;
+}
+
+function getTitleSection() {
+	var child = document.getElementById("editor").firstChild;
+	while (child != null) {
+		if ((child.nodeName.toLowerCase() == "div")
+			&& (child.getAttribute("type") == 'title')) {
+				return child;
+		}
+		child = child.nextSibling;
+	}
+	return null;
+}
+
+function hasTitle() {
+	var titleSection = getTitleSection();
+	if (titleSection) {
+		var list = titleSection.getElementsByTagName("TEXTAREA");
+		var title = filter(normalize(trim(list[0].value)));
+		return (title != "");
+	}
+	return false;
 }
 
 function hasTitle() {
@@ -954,6 +1020,12 @@ function getDocumentDescriptionText(section) {
 	}
 	if (iList[3].checked) {
 		text += " pubreq=\"yes\"";
+	}
+	if (draftpath != "") {
+		text += " draftpath=\"" + draftpath + "\"";
+	}
+	else if (draft == "yes") {
+		text += " draftpath=\"" + docpath + "\"";
 	}
 
 	text += ">\n";
@@ -1145,6 +1217,13 @@ function getItemText(item) {
 			i++;
 		}
 		return text + "</quiz>\n";
+
+	case "scoredquestion":
+		var text = "<ScoredQuestion id=\""+item.id+"\">\n";
+		if (textareaList.length) {
+			text += getTAText(textareaList[0]) + "\n";
+		}
+		return text + "</ScoredQuestion>\n";
 
 	case "commentblock":
 		var title = imgList[0].title;
@@ -1845,6 +1924,15 @@ function objectInsertQuizClicked() {
 	if (typeValueLC == "document-section") quizObjectInsert(section);
 }
 
+function objectInsertScoredQuestionClicked() {
+	var section = getCurrentSection();
+	if (section == null) return;
+	var type = section.getAttributeNode("type");
+	if (type == null) return;
+	var typeValueLC = type.value.toLowerCase();
+	if (typeValueLC == "document-section") scoredQuestionObjectInsert(section);
+}
+
 function objectInsertCommentBlockClicked() {
 	var section = getCurrentSection();
 	if (section == null) return;
@@ -2054,6 +2142,26 @@ function commentBlockObjectInsert(section) {
 	newP.appendChild(img);
 	parent.appendChild(newP);
 	newP.scrollIntoView(false);
+}
+
+function scoredQuestionObjectInsert(section) {
+	var divs = section.getElementsByTagName("DIV");
+	var parent = divs[0];
+
+	var newSQ = document.createElement("P");
+	newSQ.className = "p4";
+	newSQ.setAttribute("item-type","scoredquestion");
+	newSQ.id = (new Date()).getTime();
+	var label = document.createElement("SPAN");
+	label.className = "s6";
+	label.appendChild(document.createTextNode("Scored Question: "));
+	newSQ.appendChild(label);
+	var newTextArea = document.createElement("TEXTAREA");
+	newTextArea.className = "sectionP";
+	newTextArea.onclick = setCurrentObject;
+	newSQ.appendChild(newTextArea);
+	parent.appendChild(newSQ);
+	newSQ.scrollIntoView(false);
 }
 
 function quizObjectInsert(section) {
@@ -2437,8 +2545,493 @@ function setBreedList(myEvent) {
 	}
 }
 
+//WW/WL Presets
+function WWWLPreset(name, ww, wl) {
+	this.name = name;
+	this.wl = wl;
+	this.ww = ww;
+}
+wwwlPresets = new Array( //WW/WL
+	new WWWLPreset("Presets", 0, 0),
+	new WWWLPreset("Abdomen/pelvis", 350, 40),
+	new WWWLPreset("Bone", 2500, 480),
+	new WWWLPreset("Brain", 80, 40),
+	new WWWLPreset("Liver", 120, 70),
+	new WWWLPreset("Lung", 1500, -500),
+	new WWWLPreset("Stroke", 50, 40),
+	new WWWLPreset("Subdural", 350, 90)
+);
+
+//Set the WW/WL editor div and handle the button click event
+function startWWWLEditor() {
+	var div = document.getElementById("imginfo");
+	if (div) {
+		loadWWWLEditor(div.source);
+	}
+}
+function loadWWWLEditor(source) {
+	//Make sure there is a dcm image
+	var orig = source.getAttribute("original-format");
+	var isDCM = orig && (orig.lastIndexOf(".dcm") == orig.length-4)
+	if (!isDCM) return;
+
+	//Okay, it's DICOM, load the editor
+	removeImgInfo();
+	var wwwlEditorDiv = document.createElement("DIV");
+	wwwlEditorDiv.id = "wwwlEditorDiv";
+	wwwlEditorDiv.source = source;
+
+	var pImage = document.createElement("P");
+	var src = dirpath + source.getAttribute("base-image");
+	var img = document.createElement("IMG");
+	img.style.width = 512;
+	img.style.height = "auto";
+	img.id = "wwwlIMG";
+	img.src = src;
+	img.onmousedown = startWWWLDrag;
+	pImage.appendChild(img);
+	wwwlEditorDiv.appendChild(pImage);
+
+	var mainEditorDiv = document.getElementById("mainEditorDiv");
+	var parent = mainEditorDiv.parentNode;
+	var nextSibling = mainEditorDiv.nextSibling;
+	parent.insertBefore(wwwlEditorDiv,nextSibling);
+	mainEditorDiv.style.visibility = "hidden";
+	mainEditorDiv.style.display = "none";
+	wwwlEditorDiv.style.visibility = "visible";
+	wwwlEditorDiv.style.display = "block";
+	wwwlEditorDiv.style.overflow = "auto";
+	wwwlEditorDiv.style.background = "black";
+	wwwlEditorDiv.style.height = findObject(document.body).h;
+
+	//Get the image params
+	var params = getDCMParams(source);
+	wwwlEditorDiv.params = params;
+/**/displayParams(wwwlEditorDiv, params);
+
+	//Display the WW/WL popup
+	var size = 1 << params.BitsStored;
+	var min = params.RescaleIntercept;
+	var max = size * params.RescaleSlope + min;
+	img.min = min;
+	img.max = max;
+	img.size = size;
+
+	var div = document.getElementById("wwwlPopup");
+	if (div != null) div.parentNode.removeChild(div);
+	div = document.createElement("DIV");
+	div.className = "content";
+	div.id = "wwwlPopupDiv";
+
+	var pSelect = document.createElement("P");
+	var select = document.createElement("SELECT");
+	select.id = "SelectPreset";
+	for (var k=0; k<wwwlPresets.length; k++) {
+		addWWWLOption(select, wwwlPresets[k]);
+	}
+	select.onchange = selectPreset;
+	pSelect.appendChild(select);
+
+	var pTable = document.createElement("P");
+	var table = document.createElement("TABLE");
+	var tbody = document.createElement("TBODY");
+	table.appendChild(tbody);
+
+	var tr = document.createElement("TR");
+	tbody.appendChild(tr);
+	var td = document.createElement("TD");
+	td.appendChild(document.createTextNode("Level:"));
+	tr.appendChild(td);
+	td = document.createElement("TD");
+	var wl = document.createElement("INPUT");
+	wl.className = "wwwl";
+	wl.type = "text";
+	wl.id = "WindowLevel";
+	wl.value = params.WindowCenter;
+	wl.onkeypress = wwwlCheckEnter;
+	td.appendChild(wl);
+	tr.appendChild(td);
+
+	tr = document.createElement("TR");
+	tbody.appendChild(tr);
+
+	td = document.createElement("TD");
+	td.appendChild(document.createTextNode("Width:"));
+	tr.appendChild(td);
+
+	td = document.createElement("TD");
+	var ww = document.createElement("INPUT");
+	ww.className = "wwwl";
+	ww.type = "text";
+	ww.id = "WindowWidth";
+	ww.value = params.WindowWidth;
+	ww.onkeypress = wwwlCheckEnter;
+	td.appendChild(ww);
+	tr.appendChild(td);
+
+	pTable.appendChild(table);
+
+	var pSaveImage = document.createElement("P");
+	var b = document.createElement("INPUT");
+	b.className = "stdbutton";
+	b.type = "button";
+	b.value = " Save Image ";
+	b.onclick = saveWWWLImage;
+	b.title = "Save these values in this image";
+	pSaveImage.appendChild(b);
+
+	var pSaveSeries = document.createElement("P");
+	b = document.createElement("INPUT");
+	b.className = "stdbutton";
+	b.type = "button";
+	b.value = " Save Series ";
+	b.onclick = saveWWWLSeries;
+	b.title = "Save these values in all images of the same series as this image";
+	pSaveSeries.appendChild(b);
+
+	var pReset = document.createElement("P");
+	b = document.createElement("INPUT");
+	b.className = "stdbutton";
+	b.type = "button";
+	b.value = " Reset ";
+	b.onclick = wwwlReset;
+	pReset.appendChild(b);
+
+	div.appendChild(pSelect);
+	div.appendChild(pTable);
+	div.appendChild(pSaveImage);
+	div.appendChild(pSaveSeries);
+	div.appendChild(pReset);
+
+	//showDialog(popupDivId, w, h, title, closeboxFile, heading, div, okHandler, cancelHandler, hide);
+	showDialog("wwwlPopup", 190, 216, "Change Level & Width", closeboxURL, null, div, null, null, null, wwwlOK);
+}
+
+function addWWWLOption(select, preset) {
+	var option = document.createElement("OPTION");
+	option.appendChild(document.createTextNode(preset.name));
+	select.appendChild(option);
+}
+
+function selectPreset() {
+	var select = document.getElementById("SelectPreset");
+	if (select) {
+		var index = select.selectedIndex;
+		if (index > 0) {
+			var wlInput = document.getElementById("WindowLevel");
+			wlInput.value = wwwlPresets[index].wl;
+			var wwInput = document.getElementById("WindowWidth");
+			wwInput.value = wwwlPresets[index].ww;
+			changeWWWL();
+			select.selectedIndex = 0;
+		}
+	}
+}
+
+function displayParams(div, params) {
+	var p = document.createElement("P");
+	p.style.marginLeft = 10;
+	var table = document.createElement("TABLE");
+	table.style.marginTop = 50;
+	table.style.marginBottom = 50;
+	var tbody = document.createElement("TBODY");
+	addWWWLRow(tbody, "Modality", params.Modality);
+	addWWWLRow(tbody, "BitsAllocated", params.BitsAllocated);
+	addWWWLRow(tbody, "BitsStored", params.BitsStored);
+	addWWWLRow(tbody, "HighBit", params.HighBit);
+	addWWWLRow(tbody, "PixelRepresentation", params.PixelRepresentation);
+	addWWWLRow(tbody, "RescaleSlope", params.RescaleSlope);
+	addWWWLRow(tbody, "RescaleIntercept", params.RescaleIntercept);
+	addWWWLRow(tbody, "WindowCenter", params.WindowCenter);
+	addWWWLRow(tbody, "WindowWidth", params.WindowWidth);
+	table.appendChild(tbody);
+	p.appendChild(table);
+	div.appendChild(p);
+}
+function addWWWLRow(tbody, name, value) {
+	var tr = document.createElement("TR");
+	var td = document.createElement("TD");
+	td.appendChild(document.createTextNode(name));
+	td.style.background = "black";
+	td.style.color = "white";
+	tr.appendChild(td);
+	td = document.createElement("TD");
+	td.appendChild(document.createTextNode(value));
+	td.style.background = "black";
+	td.style.color = "white";
+	tr.appendChild(td);
+	tbody.appendChild(tr);
+}
+
+function startWWWLDrag(evt) {
+	evt = getEvent(evt);
+	var source = getSource(evt);
+	var startX = evt.clientX;
+	var startY = evt.clientY;
+	var max = source.max;
+	var min = source.min;
+	var size = source.size;
+
+	var wlInput = document.getElementById("WindowLevel");
+	var startWL = parseInt(wlInput.value);
+	var wwInput = document.getElementById("WindowWidth");
+	var startWW = parseInt(wwInput.value);
+
+	if (document.addEventListener) {
+		document.addEventListener("mousemove", dragWWWL, true);
+		document.addEventListener("mouseup", dropWWWL, true);
+	}
+	else {
+		source.attachEvent("onmousemove", dragWWWL);
+		source.attachEvent("onmouseup", dropWWWL);
+		source.setCapture();
+	}
+	if (event.stopPropagation) event.stopPropagation();
+	else event.cancelBubble = true;
+	if (event.preventDefault) event.preventDefault();
+	else event.returnValue = false;
+	return false;
+
+	function dragWWWL(evt) {
+		if (!evt) evt = window.event;
+		var deltaY = evt.clientY - startY;
+		var wl = startWL + deltaY; //- is north
+		//if (wl > max) { wl = max; startY = evt.clientY; startWL = max; }
+		//if (wl < min) { wl = min; startY = evt.clientY; startWL = min; }
+		wlInput.value = wl;
+
+		var deltaX = evt.clientX - startX;
+		var ww = startWW + deltaX; //+ is east
+		if (ww < 1) { ww = 1; startX = evt.clientX; startWW = 1; }
+		if (ww > size) { ww = size; startX = evt.clientX; startWW = size; }
+		wwInput.value = ww;
+
+		if (evt.stopPropagation) evt.stopPropagation();
+		else evt.cancelBubble = true;
+		return false;
+	}
+
+	function dropWWWL(evt) {
+		changeWWWL();
+		if (!evt) evt = window.event;
+		if (document.addEventListener) {
+			document.removeEventListener("mouseup", dropWWWL, true);
+			document.removeEventListener("mousemove", dragWWWL, true);
+		}
+		else {
+			source.detachEvent("onmousemove", dragWWWL);
+			source.detachEvent("onmouseup", dropWWWL);
+			source.releaseCapture();
+		}
+		if (evt.stopPropagation) event.stopPropagation();
+		else evt.cancelBubble = true;
+		return false;
+	}
+}
+
+function getDCMParams(source) {
+	var p = new Object();
+	src = dirpath + source.getAttribute("original-format");
+	var req = new AJAX();
+	req.GET(src, "params&" + req.timeStamp(), null);
+	if (req.success()) {
+		var xml = req.responseXML();
+		if (xml) {
+			xml = xml.firstChild;
+			p.Modality = xml.getAttribute("Modality");
+			p.BitsAllocated = getParamAsInt( xml.getAttribute("BitsAllocated"), 16 );
+			p.BitsStored = getParamAsInt( xml.getAttribute("BitsStored"), 12 );
+			p.HighBit = getParamAsInt( xml.getAttribute("HighBit"), 11 );
+			p.PixelRepresentation = getParamAsInt( xml.getAttribute("PixelRepresentation"), 0 );
+			p.RescaleSlope = getParamAsFloat( xml.getAttribute("RescaleSlope"), 1 );
+			p.RescaleIntercept = getParamAsFloat( xml.getAttribute("RescaleIntercept"), 0 );
+			p.WindowCenter = getParamAsInt( xml.getAttribute("WindowCenter"), 1000 );
+			p.WindowWidth = getParamAsInt( xml.getAttribute("WindowWidth"), 1000 );
+		}
+	}
+	return p;
+}
+
+function getParamAsFloat(string, def) {
+	try { return parseFloat(string); }
+	catch (e) { return def; }
+}
+
+function getParamAsInt(string, def) {
+	try { return Math.round( parseFloat(string) ); }
+	catch (e) { return def; }
+}
+
+function wwwlCheckEnter(evt) {
+	var e = getEvent(evt);
+	var key = e.keyCode;
+	if (key == 13) changeWWWL();
+}
+
+function wwwlReset() {
+	var div = document.getElementById("wwwlEditorDiv");
+	var params = div.params;
+	var wlInput = document.getElementById("WindowLevel");
+	var wwInput = document.getElementById("WindowWidth");
+	wlInput.value = params.WindowCenter;
+	wwInput.value = params.WindowWidth;
+	changeWWWL();
+}
+
+function changeWWWL() {
+	var div = document.getElementById("wwwlEditorDiv");
+	var source = div.source;
+	var wlInput = document.getElementById("WindowLevel");
+	var wwInput = document.getElementById("WindowWidth");
+	var wl = parseInt(wlInput.value);
+	var ww = parseInt(wwInput.value);
+	src = dirpath + source.getAttribute("original-format") + "?jpeg&ww="+ww+"&wl="+wl;
+	var img = document.getElementById("wwwlIMG");
+	var w = img.clientWidth;
+	var h = img.clientHeight;
+	img.src = src;
+	img.style.width = w;
+	img.style.height = h;
+}
+
+function saveWWWLImage() {
+	doWWWLSave("");
+}
+function saveWWWLSeries() {
+	doWWWLSave("&series");
+}
+function doWWWLSave(series) {
+	var div = document.getElementById("wwwlEditorDiv");
+	var source = div.source;
+	var wlInput = document.getElementById("WindowLevel");
+	var wwInput = document.getElementById("WindowWidth");
+	var wl = parseInt(wlInput.value);
+	var ww = parseInt(wwInput.value);
+	var doc = docpath.substring(docpath.lastIndexOf("/")+1);
+	var src = dirpath + source.getAttribute("original-format");
+	var req = new AJAX();
+	var qs = "update"+series+"&ww="+ww+"&wl="+wl+"&doc="+doc + "&"+req.timeStamp();
+	req.GET(src, qs, null);
+	if (req.success()) {
+		var xml = req.responseXML();
+		if (xml) {
+			xml = xml.firstChild;
+			if (xml.tagName == "NOTOK") alert("Unable to save the modified image values.");
+			else alert("The modified image values are\n"
+					  +"being saved in a background process.\n"
+					  +"You may continue to modify this or\n"
+					  +"other images.");
+		}
+	}
+}
+
+function wwwlOK() {
+	var popup = document.getElementById("wwwlPopup");
+	if (popup) popup.parentNode.removeChild(popup);
+	hidePopups(); //just in case
+
+	var wwwlEditorDiv = document.getElementById("wwwlEditorDiv");
+	var source = wwwlEditorDiv.source;
+
+	var mainEditorDiv = document.getElementById("mainEditorDiv");
+	wwwlEditorDiv.style.visibility = "hidden";
+	wwwlEditorDiv.style.display = "none";
+	mainEditorDiv.style.visibility = "visible";
+	mainEditorDiv.style.display = "block";
+	var parent = wwwlEditorDiv.parentNode;
+	parent.removeChild(wwwlEditorDiv);
+}
+
+function imgMouseEnter(event) {
+	var evt = getEvent(event);
+	var source = getSource(evt);
+	var sourcePos = findObject(source);
+	var div = document.getElementById("imginfo");
+	if (div) document.body.removeChild(div);
+	div = document.createElement("DIV");
+	div.source = source;
+	div.id = "imginfo";
+	div.className = "imginfo";
+	div.onmouseout = imgMouseLeave;
+	var srcName = source.src;
+	srcName = srcName.substring(srcName.lastIndexOf("/") + 1);
+	var height = 45;
+	div.appendChild(document.createTextNode(srcName));
+	div.appendChild(document.createElement("BR"));
+
+	if (imageHasBeenSaved(source)) {
+		var a = document.createElement("A");
+		a.onclick = startSVGEditor;
+		a.appendChild(document.createTextNode("Edit annotations (Double-click)"));
+		div.appendChild(a);
+		div.appendChild(document.createElement("BR"));
+		height += 15;
+
+		var a = document.createElement("A");
+		a.onclick = startCaptionEditor;
+		a.appendChild(document.createTextNode("Edit captions (CTRL-double-click)"));
+		div.appendChild(a);
+		div.appendChild(document.createElement("BR"));
+		height += 15;
+
+		var orig = source.getAttribute("original-format");
+		var isDCM = orig && (orig.lastIndexOf(".dcm") == orig.length-4)
+		if (isDCM) {
+			a = document.createElement("A");
+			a.onclick = startWWWLEditor;
+			a.appendChild(document.createTextNode("Adjust level and width (ALT-double-click)"));
+			div.appendChild(a);
+			div.appendChild(document.createElement("BR"));
+			height += 15;
+		}
+	}
+
+	var x = sourcePos.x + sourcePos.w/4 - sourcePos.scrollLeft;
+	var y = sourcePos.y + (sourcePos.h * 3)/4 - sourcePos.scrollTop;
+	div.style.height = height;
+	div.style.left = x;
+	div.style.top = y;
+	div.style.zIndex = 50;
+	document.body.appendChild(div);
+}
+
+function imgMouseLeave(event) {
+	var div = document.getElementById("imginfo");
+	if (div) {
+		var source = div.source;
+		var x = window.event.clientX;
+		var y = window.event.clientY;
+		if (!containsXY(source, x, y) && !containsXY(div, x, y)) {
+			document.body.removeChild(div);
+		}
+	}
+}
+
+function removeImgInfo() {
+	var div = document.getElementById("imginfo");
+	if (div) document.body.removeChild(div);
+}
+
+function containsXY(obj, x, y) {
+	var pos = findObject(obj);
+	if (pos) {
+		if ((pos.x <= x) && (x < (pos.x + pos.w))
+			&& (pos.y <= y) && (y < (pos.y + pos.h))) {
+			return true;
+		}
+	}
+	return false;
+}
+
 //Set the caption editor div and handle the button click event.
+function startCaptionEditor() {
+	var div = document.getElementById("imginfo");
+	if (div) {
+		loadCaptionEditor(div.source);
+	}
+}
 function loadCaptionEditor(source) {
+	removeImgInfo();
 	var captionEditorDiv = document.createElement("DIV");
 	captionEditorDiv.id = "captionEditorDiv";
 	captionEditorDiv.source = source;

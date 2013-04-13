@@ -196,6 +196,7 @@ public class AuthorService extends Servlet {
 						new Object[] {
 							"prefs",	prefs,
 							"ssid",		ssid,
+							"docpath",	path.subpath(1),
 							"dirpath",	dirPath,
 							"icons",	getIcon96(docFile.getParentFile()),
 							"authpath",	authPath,
@@ -363,7 +364,7 @@ public class AuthorService extends Servlet {
 						index.insertDocument( key );
 
 						//Record the activity
-						ActivityDB.getInstance().increment(ssid, "aauth");
+						ActivityDB.getInstance().increment(ssid, "aauth", username);
 
 						//Return the editor form
 						Document prefs = Preferences.getInstance().get( username, true ).getOwnerDocument();
@@ -375,6 +376,7 @@ public class AuthorService extends Servlet {
 							new Object[] {
 								"prefs",	prefs,
 								"ssid",		ssid,
+								"docpath",	path.subpath(1),
 								"dirpath",	dirPath,
 								"authpath",	authPath,
 								"icons",	getIcon96(dir),
@@ -455,6 +457,7 @@ public class AuthorService extends Servlet {
 								new Object[] {
 									"prefs",	prefs,
 									"ssid",		ssid,
+									"docpath",	path.subpath(1),
 									"dirpath",	dirPath,
 									"authpath",	authPath,
 									"icons",	getIcon96(dir),

@@ -27,7 +27,10 @@ import mirc.prefs.*;
 import mirc.publish.*;
 import mirc.qsadmin.*;
 import mirc.query.*;
+import mirc.quiz.*;
 import mirc.radlex.*;
+import mirc.reset.*;
+import mirc.revert.*;
 import mirc.sort.*;
 import mirc.ssadmin.*;
 import mirc.storage.*;
@@ -88,6 +91,9 @@ public class MIRC extends AbstractPlugin {
 		//Load the DownloadDB
 		DownloadDB.load( root );
 
+		//Load the ScoredQuizDB
+		ScoredQuizDB.load( root );
+
 		//Load the ActivityDB
 		ActivityDB.load( root );
 
@@ -104,6 +110,8 @@ public class MIRC extends AbstractPlugin {
 		selector.addServlet("fsadmin", FileServiceAdmin.class);
 		selector.addServlet("challenge", ChallengeServlet.class);
 		selector.addServlet("radlex", RadLexSuggest.class);
+		selector.addServlet("reset", ResetService.class);
+		selector.addServlet("revert", RevertService.class);
 		selector.addServlet("sort", SortImagesService.class);
 		selector.addServlet("storage", StorageService.class);
 		selector.addServlet("ssadmin", StorageServiceAdmin.class);
@@ -119,18 +127,24 @@ public class MIRC extends AbstractPlugin {
 		selector.addServlet("download", DownloadServlet.class);
 		selector.addServlet("comment", CommentService.class);
 		selector.addServlet("myrsna", MyRSNAServlet.class);
+		selector.addServlet("quiz", QuizServlet.class);
+		selector.addServlet("quizmgr", QuizManagerServlet.class);
+		selector.addServlet("quizsummary", QuizSummaryServlet.class);
+		selector.addServlet("quizanswers", QuizAnswerSummaryServlet.class);
 
 		//Install the standard roles
 		Users users = Users.getInstance();
 		users.addRole("publisher");
 		users.addRole("author");
 		users.addRole("update");
+		users.addRole("department");
 
 		//Make sure the admin has the MIRC roles
 		User admin = users.getUser("admin");
 		if (admin != null) {
 			admin.addRole("author");
 			admin.addRole("publisher");
+			admin.addRole("department");
 
 			//Set a person name for the admin user
 			//if it doesn't already have one.
@@ -148,6 +162,8 @@ public class MIRC extends AbstractPlugin {
 				}
 			}
 		}
+
+		logger.info("MIRC Plugin started");
 
 		//Install the defined roles
 		mc.setDefinedRoles();
@@ -171,7 +187,9 @@ public class MIRC extends AbstractPlugin {
 			}
 		}
 
-		logger.info("MIRC Plugin started");
+		//Start the Activity Summary Report Submitter
+		new SummarySubmitter().start();
+
 	}
 
 	/**

@@ -151,7 +151,19 @@ function showAdvancedQueryPopup() {
 	div.style.display = "block";
 	var title = "Advanced Search";
 	var closebox = "/icons/closebox.gif";
-	showDialog(aqPopupID, 800, 335, title, closebox, null, div, null, null);
+	showDialog(aqPopupID, 800, 345, title, closebox, null, div, null, null);
+}
+
+function setBreedList() {
+	var ptSpecies = document.getElementById("pt-species");
+	var ptBreed = document.getElementById("pt-breed");
+	ptBreed.options.length = 0;
+	var choice = ptSpecies.selectedIndex;
+	var breedlist = breeds[choice];
+	ptBreed.options[0] = new Option("","");
+	for (var i=0; i<breedlist.length; i++) {
+		 ptBreed.options[i+1] = new Option(breedlist[i], breedlist[i]);
+	}
 }
 
 function bclick(next_page_Id, theEvent) {
@@ -170,13 +182,13 @@ function bclick(next_page_Id, theEvent) {
 }
 
 function selectTab(tab) {
-	tab.style.backgroundColor = "#6495ED";
+	tab.style.backgroundColor = "#2977b9";
 	tab.style.color = 'white';
 }
 
 function deselectTab(tab) {
 	tab.style.backgroundColor = 'white';
-	tab.style.color = "#6495ED";
+	tab.style.color = "#2977b9";
 }
 
 function setModifierValues() {
@@ -758,9 +770,15 @@ function makeLinks(includeNextPrev) {
 	}
 	div.appendChild( makeUnknownsLink() );
 	div.appendChild( makeLink(displayCN, "/mirc/images/film-projector.gif", "Display the selected cases in the Case Navigator") );
+
+	if (user.isLoggedIn && user.hasRole("admin")) {
+		var myr = makeLink(getQuizSummary, "/mirc/images/quizsummary.png", "Quiz summary for the selected local cases");
+		div.appendChild( myr );
+	}
+
 	if (user.isLoggedIn && prefs.myrsna) {
 		var myr = makeLink(sendToMyRSNA, "/mirc/images/myrsna.png", "Export the selected local cases to myRSNA Files");
-		myr.style.marginLeft = "20px";
+		myr.style.marginLeft = "5px";
 		div.appendChild( myr );
 	}
 	return div;
@@ -988,6 +1006,29 @@ function displayCN() {
 		}
 		if (urls != "") {
 			window.open("/casenav?suppressHome=yes&urls="+encodeURIComponent(urls), "shared");
+		}
+	}
+}
+
+function getQuizSummary() {
+	if (scrollableTable) {
+		var tbody = scrollableTable.tbody;
+		var cbs = tbody.getElementsByTagName("INPUT");
+		var urls = "";
+		var count = 0;
+		for (var i=0; i<cbs.length; i++) {
+			var cb = cbs[i];
+			if ((cb.type == "checkbox") && cb.checked) {
+				var td = cb.parentNode.nextSibling;
+				var a = td.getElementsByTagName("A")[0];
+				var url = a.getAttribute("href");
+				if (urls != "") urls += "|";
+				urls += url;
+				count++;
+			}
+		}
+		if (count > 0) {
+			window.open("/quizsummary?suppressHome=yes&urls="+encodeURIComponent(urls), "shared");
 		}
 	}
 }
