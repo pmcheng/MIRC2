@@ -12,6 +12,7 @@ import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URLEncoder;
 import java.util.HashSet;
+import java.util.Properties;
 import java.util.Set;
 
 import mirc.activity.ActivityDB;
@@ -24,6 +25,9 @@ import mirc.util.MyRsnaSession;
 import mirc.util.MyRsnaSessions;
 
 import org.apache.log4j.Logger;
+
+import org.rsna.ctp.stdstages.anonymizer.dicom.DAScript;
+import org.rsna.ctp.stdstages.anonymizer.dicom.DICOMAnonymizer;
 
 import org.rsna.servlets.Servlet;
 import org.rsna.server.HttpRequest;
@@ -166,11 +170,12 @@ public class StorageService extends Servlet {
 			else if (req.getParameter("jpeg") != null) {
 				//This is a request for a JPEG image with window leveling.
 				try {
-					int frame = StringUtil.getInt( req.getParameter("frame"), 0);
+					int frame = StringUtil.getInt( req.getParameter("frame"), -1);
 					int q = StringUtil.getInt( req.getParameter("q"), -1 );
 					int ww = StringUtil.getInt( req.getParameter("ww") );
 					int wl = StringUtil.getInt( req.getParameter("wl") );
 					DicomObject dob = new DicomObject(file);
+					if (frame == -1) frame = dob.getNumberOfFrames() / 2;
 					String name = file.getName();
 					name = name.substring(0, name.lastIndexOf(".")) + "["+/*wl+","+ww+"*/"WWWL].jpeg";
 					File windowedFile = new File(file.getParentFile(), name);
@@ -188,7 +193,7 @@ public class StorageService extends Servlet {
 				//This is done in a background thread because it could take
 				//time to update all the images if it's a series request.
 				try {
-					int frame = StringUtil.getInt( req.getParameter("frame"), 0);
+					int frame = StringUtil.getInt( req.getParameter("frame"), -1);
 					int q = StringUtil.getInt( req.getParameter("q"), -1 );
 					int ww = StringUtil.getInt( req.getParameter("ww") );
 					int wl = StringUtil.getInt( req.getParameter("wl") );
@@ -287,6 +292,8 @@ public class StorageService extends Servlet {
 					res.send();
 					odpFile.delete();
 					AccessLog.logAccess(req, doc);
+					String ssid = path.element(1);
+					ActivityDB.getInstance().increment(ssid, "slides", username);
 					return;
 				}
 				else {
@@ -297,7 +304,7 @@ public class StorageService extends Servlet {
 				}
 			}
 
-			//It's not a PPT export. See if this is a zip export request.
+			//See if this is a zip export request.
 			String zipParameter = req.getParameter("zip");
 			if (zipParameter != null) {
 
@@ -368,7 +375,86 @@ public class StorageService extends Servlet {
 				}
 			}
 
-			//It's not a zip export, check whether read is authorized.
+			//See if this is a DICOM export request.
+			String dicomParameter = req.getParameter("dicom");
+			if (dicomParameter != null) {
+
+				//Check whether export is authorized.
+				if (userIsAuthorizedTo("export", doc, req)) {
+
+					//Export is authorized; make the file for the zip file
+					String extParameter = req.getParameter("ext", "").trim();
+					File zipFile = MircDocument.getFileForZip(doc, file, extParameter);
+
+					//Make a directory to hold the copied DICOM files
+					MircConfig mc = MircConfig.getInstance();
+					File temp = mc.createTempDirectory();
+					String name = zipFile.getName();
+					name = name.substring(0, name.lastIndexOf(".zip"));
+					File zipDir = new File(temp, name);
+					File dcmDir = new File(zipDir, "DCM");
+					File jpgDir = new File(zipDir, "JPG");
+					dcmDir.mkdirs();
+					jpgDir.mkdirs();
+
+					//The getFileForZip method puts the file in the MIRCdocument's
+					//directory. In this case, it would be better to put it in the
+					//temp directory. Let's also add "_DICOM" to the name so the
+					//user won't inadvertently write over the export of the
+					//full MIRCdocument.
+					zipFile = new File(temp, name+"_DICOM.zip");
+
+					//Get all the DICOM files referenced by the document.
+					NodeList nl = rootElement.getElementsByTagName("alternative-image");
+					for (int k=0; k<nl.getLength(); k++) {
+						Element alt = (Element)nl.item(k);
+						if (alt.getAttribute("role").equals("original-format")) {
+							String src = alt.getAttribute("src");
+							if (src.toLowerCase().endsWith(".dcm")) {
+								Element orderBy = XmlUtil.getFirstNamedChild(alt.getParentNode(), "order-by");
+								File dobFile = new File( file.getParentFile(), src);
+								String study = orderBy.getAttribute("study");
+								String series = orderBy.getAttribute("series");
+								String acquisition = orderBy.getAttribute("acquisition");
+								String instance = orderBy.getAttribute("instance");
+								String newName = study + "_" + series + "_" + acquisition + "_" + instance;
+								FileUtil.copy(dobFile, new File(dcmDir, newName + ".dcm"));
+
+								//Now get the corresponding JPEG image
+								Element parent = (Element)alt.getParentNode();
+								NodeList altnl = parent.getElementsByTagName("alternative-image");
+								Element jpeg = parent; //use the image element if there is no original-dimensions version
+								for (int i=0; i<altnl.getLength(); i++) {
+									Element e = (Element)altnl.item(i);
+									if (e.getAttribute("role").equals("original-dimensions")) {
+										jpeg = e;
+										break;
+									}
+								}
+								File jpegFile = new File( file.getParentFile(), jpeg.getAttribute("src") );
+								FileUtil.copy( jpegFile, new File(jpgDir, newName + ".jpg"));
+							}
+						}
+					}
+
+					//Now zip it, return the zip file, and clean up
+					FileUtil.zipDirectory(zipDir, zipFile);
+					res.write(zipFile);
+					res.setContentType("zip");
+					res.setContentDisposition(zipFile);
+					res.send();
+					FileUtil.deleteAll(temp);
+					return;
+				}
+				else {
+					//Export is not authorized.
+					res.setResponseCode( res.forbidden );
+					res.send();
+					return;
+				}
+			}
+
+			//It's not an export, check whether read is authorized.
 			if (!userIsAuthorizedTo("read", doc, req)) {
 				String qs = req.getQueryString();
 				if (!qs.equals("")) qs = "?" + qs;
@@ -404,6 +490,25 @@ public class StorageService extends Servlet {
 				return;
 			}
 
+			//See if the user wants to anonymize all the DicomObjects
+			if (req.hasParameter("anonymize") && userIsAuthorizedTo("update", doc, req))  {
+				File scriptFile = new File("scripts/DicomServiceAnonymizer.script");
+				DAScript dascript = DAScript.getInstance(scriptFile);
+				Properties script = dascript.toProperties();
+				NodeList nl = rootElement.getElementsByTagName("alternative-image");
+				for (int k=0; k<nl.getLength(); k++) {
+					Element alt = (Element)nl.item(k);
+					if (alt.getAttribute("role").equals("original-format")) {
+						String src = alt.getAttribute("src");
+						if (src.toLowerCase().endsWith(".dcm")) {
+							File dobFile = new File( file.getParentFile(), src);
+							DICOMAnonymizer.anonymize(dobFile, dobFile, script, null, null, false, false);
+						}
+					}
+				}
+				//When we're dcne, just go ahead and display the document
+			}
+
 			//OK, transform the document and return the result
 			String xslResource = "/storage/MIRCdocument.xsl";
 			File xslFile = new File( file.getParentFile(), "MIRCdocument.xsl" );
@@ -437,24 +542,10 @@ public class StorageService extends Servlet {
 	public void doPost(HttpRequest req, HttpResponse res ) throws Exception {
 
 		long currentTime = System.currentTimeMillis();
-		logger.debug("Query received for "+req.path);
+		logger.debug(Thread.currentThread().getName()+": Query received for "+req.path);
 
 		//All responses will be XML
 		res.setContentType("xml");
-
-		//Do our own authentication based on the RSNASESSION cookie.
-		//Note that the RSNASESSION cookie is a pointer into a session table
-		//maintained by the Authenticator. Each session contains the username
-		//as well as the IP address of the client. We need to know who the user
-		//is, but the Authenticator will have failed to authenticate this connection
-		//because it came from the Query Service, not the client who initiated the
-		//session. So our strategy here will be to get the cookie that was passed
-		//by the Query Service and ask the Authenticator for the username of the
-		//session, then to get the user from the Users class and force that back
-		//into the HttpRequest, thus accepting the fact that the cookie is from
-		//a different source.
-		String username = Authenticator.getInstance().getUsernameForSession(req.getCookie("RSNASESSION"));
-		if (username != null) req.setUser(Users.getInstance().getUser(username));
 
 		//Check that this is a post of a MIRCquery.
 		if (req.getContentType().toLowerCase().contains("text/xml")) {
@@ -463,15 +554,6 @@ public class StorageService extends Servlet {
 			//Note: the URL will always be /storage/{ssid}
 			Path path = req.getParsedPath();
 			String ssid = path.element(1);
-			MircConfig mc = MircConfig.getInstance();
-			Element lib = mc.getLocalLibrary(ssid);
-
-			//Make sure this query is for a known local library
-			if (lib == null) {
-				res.write( makeMQRString("Unknown index: "+ssid) );
-				res.send();
-				return;
-			}
 
 			//Get the query
 			byte[] bytes = FileUtil.getBytes( req.getInputStream(), req.getContentLength() );
@@ -479,90 +561,92 @@ public class StorageService extends Servlet {
 			try { mircQueryString = new String(bytes, "UTF-8"); }
 			catch (Exception leaveEmpty) { }
 
-			//Parse the MIRCquery
-			Query query = null;
-			try {
-				Document mircQueryXML = XmlUtil.getDocument(mircQueryString);
-				//logger.debug("Query document:\n"+XmlUtil.toPrettyString(mircQueryXML));
-				query = new Query(mircQueryXML);
-			}
-			catch (Exception e) {
-				res.write(
-					makeMQRString(
-						"Error parsing the MIRCquery:"
-						+ "<br/>Exception message: " + e.getMessage()
-						+ "<br/>MIRCquery string length: " + mircQueryString.length()
-						+ "<br/>MIRCquery string:<br/><br/>"
-						+ StringUtil.makeReadableTagString(mircQueryString)));
-				res.send();
-				return;
-			}
-
-			//Get the user.
-			User user = req.getUser();
-
-			//Get the index
-			Index index = Index.getInstance(ssid);
-
 			//Do the query
-			boolean isOpen = lib.getAttribute("mode").equals("open");
-			IndexEntry[] mies = index.query( query, isOpen, user );
-
-			//Sort the results
-			String orderBy = query.orderby;
-			if (orderBy.equals("title"))
-				index.sortByTitle(mies);
-			else if (orderBy.equals("pubdate"))
-				index.sortByPubDate(mies);
-			else
-				index.sortByLMDate(mies);
-
-			//Get a document for the MIRCqueryresult
-			Document doc = null;
-			try { doc = XmlUtil.getDocument(); }
-			catch (Exception ex) {
-				String message = "Unable to create an XML document for the MIRCqueryresult";
-				logger.error(message, ex);
-				res.write( makeMQRString(message) );
-				res.send();
-				return;
-			}
-
-			//Select the requested page
-			if (query.firstresult < 0) query.firstresult = 0;
-			if (query.maxresults <= 0) query.maxresults = 1;
-			Element root = doc.createElement("MIRCqueryresult");
-			doc.appendChild(root);
-			String tagline = XmlUtil.getTextContent(lib, "Library/tagline");
-			setPreamble(root, mies.length, tagline);
-
-			//Important note: The imported node must be passed to fixResult.
-			//Do not pass the node from the mies array (mies[i].md) and then
-			//import the returned node. This would cause fixResult to modify
-			//the object in the JDBM's cache, causing problems in the next query.
-			String docbase = mc.getLocalAddress() + "/storage/" + ssid + "/";
-			int begin = query.firstresult - 1;
-			int end = begin + query.maxresults;
-			for (int i=begin; ((i<end) && (i<mies.length)); i++) {
-				root.appendChild( fixResult(docbase, (Element)doc.importNode(mies[i].md, true), query) );
-			}
-			//Return the result.
-			res.write( XmlUtil.toString(root) );
-			res.send();
-			logger.debug("Response returned for "+req.path+" ("+(System.currentTimeMillis() - currentTime)+"ms)");
-			return;
+			//Note: queries received from the network are not authenticated
+			res.write(doQuery(ssid, mircQueryString, null));
 		}
-
 		else {
 			//Unknown content type
 			res.write(
 				makeMQRString(
 					"Unsupported Content-Type: "+req.getContentType()));
-			res.send();
 		}
+		res.send();
+		logger.debug(Thread.currentThread().getName()+": Response returned for "+req.path+" ("+(System.currentTimeMillis() - currentTime)+"ms)");
 	}
 
-	private void setPreamble(Element root, int matches, String tagline) {
+	public static String doQuery(String ssid, String mircQueryString, User user) {
+		MircConfig mc = MircConfig.getInstance();
+
+		//Parse the MIRCquery
+		Query query = null;
+		try {
+			Document mircQueryXML = XmlUtil.getDocument(mircQueryString);
+			//logger.debug("Query document:\n"+XmlUtil.toPrettyString(mircQueryXML));
+			query = new Query(mircQueryXML);
+		}
+		catch (Exception e) {
+			return
+				makeMQRString(
+					"Error parsing the MIRCquery:"
+					+ "<br/>Exception message: " + e.getMessage()
+					+ "<br/>MIRCquery string length: " + mircQueryString.length()
+					+ "<br/>MIRCquery string:<br/><br/>"
+					+ StringUtil.makeReadableTagString(mircQueryString));
+		}
+
+		//Make sure this query is for a known local library
+		Element lib = mc.getLocalLibrary(ssid);
+		if (lib == null) return makeMQRString("Unknown index: "+ssid);
+
+		//Get the index
+		Index index = Index.getInstance(ssid);
+
+		//Do the query
+		boolean isOpen = lib.getAttribute("mode").equals("open");
+		IndexEntry[] mies = index.query( query, isOpen, user );
+
+		//Sort the results
+		String orderBy = query.orderby;
+		if (orderBy.equals("title"))
+			index.sortByTitle(mies);
+		else if (orderBy.equals("pubdate"))
+			index.sortByPubDate(mies);
+		else
+			index.sortByLMDate(mies);
+
+		//Get a document for the MIRCqueryresult
+		Document doc = null;
+		try { doc = XmlUtil.getDocument(); }
+		catch (Exception ex) {
+			String message = "Unable to create an XML document for the MIRCqueryresult";
+			logger.error(message, ex);
+			return makeMQRString(message);
+		}
+
+		//Select the requested page
+		if (query.firstresult < 0) query.firstresult = 0;
+		if (query.maxresults <= 0) query.maxresults = 1;
+		Element root = doc.createElement("MIRCqueryresult");
+		doc.appendChild(root);
+		String tagline = XmlUtil.getTextContent(lib, "Library/tagline");
+		setPreamble(root, mies.length, tagline);
+
+		//Important note: The imported node must be passed to fixResult.
+		//Do not pass the node from the mies array (mies[i].md) and then
+		//import the returned node. This would cause fixResult to modify
+		//the object in the JDBM's cache, causing problems in the next query.
+		String docbase = mc.getLocalAddress() + "/storage/" + ssid + "/";
+		int begin = query.firstresult - 1;
+		int end = begin + query.maxresults;
+		for (int i=begin; ((i<end) && (i<mies.length)); i++) {
+			root.appendChild( fixResult(docbase, (Element)doc.importNode(mies[i].md, true), query) );
+		}
+		//Return the result.
+		return XmlUtil.toString(root);
+	}
+
+	private static void setPreamble(Element root, int matches, String tagline) {
 		Document doc = root.getOwnerDocument();
 		Element preamble = doc.createElement("preamble");
 		root.appendChild(preamble);
@@ -578,7 +662,7 @@ public class StorageService extends Servlet {
 		preamble.appendChild(p);
 	}
 
-	private Element fixResult( String context, Element md, Query query ) {
+	private static Element fixResult( String context, Element md, Query query ) {
 		//First fix the docref
 		String path = md.getAttribute("path").trim();
 		String docref = context + path;
@@ -637,7 +721,7 @@ public class StorageService extends Servlet {
 		return md;
 	}
 
-	private void copy(Element from, Element to, String name) {
+	private static void copy(Element from, Element to, String name) {
 		if (to == null) {
 			to = from.getOwnerDocument().createElement(name);
 			from.getParentNode().insertBefore(to,from);
@@ -651,7 +735,7 @@ public class StorageService extends Servlet {
 	}
 
 	//Make a MIRCqueryresult string with only a preamble.
-	private String makeMQRString(String preambleString) {
+	private static String makeMQRString(String preambleString) {
 		return
 			"<MIRCqueryresult>" +
 				"<preamble>" + preambleString + "</preamble>" +
@@ -862,10 +946,12 @@ public class StorageService extends Servlet {
 		String addurl = "";
 		String sorturl = "";
 		String publishurl = "";
+		String anonymizeurl = "";
 		if (userIsAuthorizedTo("update", doc, req)) {
 			editurl = "/aauth" + docIndexEntry;
 			addurl = "/addimg" + docIndexEntry;
 			sorturl = "/sort" + docIndexEntry;
+			anonymizeurl = docPath + "?anonymize";
 			if (!isDraft && !doc.getDocumentElement().getAttribute("draftpath").equals("")) {
 				reverturl = "/revert" + docIndexEntry;
 			}
@@ -884,10 +970,12 @@ public class StorageService extends Servlet {
 		String pptexporturl = "";
 		String zipexporturl = "";
 		String filecabineturl = "";
+		String dicomexporturl = "";
 		if (canExport) {
 			pptexporturl = docPath + "?ppt";
 			zipexporturl = docPath + "?zip";
 			filecabineturl = "/files/save" + docPath;
+			if (hasDicomImages(doc)) dicomexporturl = docPath + "?dicom";
 		}
 
 		//Set the parameter that identifies this as a preview, in which case
@@ -923,6 +1011,7 @@ public class StorageService extends Servlet {
 			"user-is-admin",		userisadmin,
 			"user-is-publisher",	userispublisher,
 			"user-can-post",		userisauthor,
+			"mobile-device",		(req.isFromMobileDevice() ? "yes" : "no"),
 
 			"edit-url",				editurl,
 			"revert-url",			reverturl,
@@ -930,8 +1019,10 @@ public class StorageService extends Servlet {
 			"sort-url",				sorturl,
 			"publish-url",			publishurl,
 			"delete-url",			deleteurl,
+			"anonymize-url",		anonymizeurl,
 			"ppt-export-url",		pptexporturl,
 			"zip-export-url",		zipexporturl,
+			"dicom-export-url",		dicomexporturl,
 			"filecabinet-url",		filecabineturl,
 
 			"preview",				preview,
@@ -947,6 +1038,16 @@ public class StorageService extends Servlet {
 			"base-date",			Long.toString(baseDate)
 		};
 		return params;
+	}
+
+	private boolean hasDicomImages(Document doc) {
+		NodeList nl = doc.getDocumentElement().getElementsByTagName("alternative-image");
+		for (int k=0; k<nl.getLength(); k++) {
+			Element alt = (Element)nl.item(k);
+			if (alt.getAttribute("role").equals("original-format")
+					&& alt.getAttribute("src").endsWith(".dcm")) return true;
+		}
+		return false;
 	}
 
 	//Get the earliest study date in the order-by elements

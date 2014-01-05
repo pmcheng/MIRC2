@@ -1307,6 +1307,7 @@ function makeImage(img) {
 			+">\n";
 	text += altimage(img,"icon");
 	text += altimage(img,"annotation");
+	text += altimage(img,"video");
 	text += altimage(img,"original-dimensions");
 	text += altimage(img,"original-format");
 	text += imagechild(img,"format");
@@ -1348,6 +1349,8 @@ function orderby(img) {
 	var acquisition = img.getAttribute("orderby-acquisition");
 	var instance = img.getAttribute("orderby-instance");
 	var date = img.getAttribute("orderby-date");
+	var studyDesc = img.getAttribute("orderby-study-desc");
+	var seriesDesc = img.getAttribute("orderby-series-desc");
 	if ((study!=null) && (series!=null) && (acquisition!=null) && (instance!=null)) {
 		var x = "<order-by";
 		x += " study=\"" + study + "\"";
@@ -1355,6 +1358,8 @@ function orderby(img) {
 		x += " acquisition=\"" + acquisition + "\"";
 		x += " instance=\"" + instance + "\"";
 		x += " date=\"" + date + "\"";
+		x += " study-desc=\"" + escapeChars(studyDesc) + "\"";
+		x += " series-desc=\"" + escapeChars(seriesDesc) + "\"";
 		x += "/>";
 		return x;
 	}

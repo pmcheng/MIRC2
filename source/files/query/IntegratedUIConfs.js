@@ -51,6 +51,7 @@ function setConfEnables() {
 		insertConfImgControl(ctrls, normalTitles, "/mirc/images/toggletitles.png", "Display titles as knowns", !showNormalTitles);
 		insertConfImgControl(ctrls, unknownTitles, "/mirc/images/toggletitles.png", "Display titles as unknowns", showNormalTitles);
 		insertConfImgControl(ctrls, displayCN, "/mirc/images/film-projector.gif", "Display the selected cases in the Case Navigator", (nSelected > 0));
+		insertConfImgControl(ctrls, getPresentation, "/mirc/images/presentation.png", "Export the selected local cases as a presentation", (nSelected > 0));
 		insertConfImgControl(ctrls, getQuizSummary, "/mirc/images/quizsummary.png", "Quiz summary for the selected local cases", user.isLoggedIn && user.hasRole("admin"));
 		/*
 		insertConfButtonControl(ctrls, newConference, "New Conference", "Create a new conference in the current conference", user.isLoggedIn && currentConfTreeNode);
@@ -572,7 +573,7 @@ function dragAgendaItem(dragableDiv, event) {
 			lastTreeNode = confTreeManager.getTreeForCoords(evt.clientX, evt.clientY + scrollTop);
 			if (lastTreeNode) {
 				var namespan = lastTreeNode.namespan;
-				namespan.style.color = "white";
+				namespan.style.color = "green";
 			}
 		}
 
@@ -610,7 +611,7 @@ function dragAgendaItem(dragableDiv, event) {
 		var pos = findObject(left);
 		var list = getSelectedAIs();
 		if ((list != "") && (evt.clientX < pos.w)) {
-			//This is a move to another conference (maybe)
+			//This is a copy to another conference (maybe)
 			var sourcePath = currentConfTreeNode.getPath();;
 			var destTree = confTreeManager.getTreeForCoords(evt.clientX, evt.clientY + scrollTop);
 			if (destTree) {
@@ -623,10 +624,10 @@ function dragAgendaItem(dragableDiv, event) {
 									+"&list="+encodeURIComponent(list)
 										+"&"+req.timeStamp();
 
-					req.GET("/confs/transferAgendaItem", qs, null);
+					req.GET("/confs/copyAgendaItem", qs, null);
 					if (req.success()) showCurrentConferenceContents();
 					else {
-						alert("The attempt to transfer the agenda item failed.");
+						alert("The attempt to copy the agenda item failed.");
 						window.open("/query", "_self");
 					}
 				}

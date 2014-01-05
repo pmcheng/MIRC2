@@ -50,7 +50,7 @@ public class MircUserManagerServlet extends Servlet {
 	public void doGet(HttpRequest req, HttpResponse res) throws Exception {
 
 		//Make sure the user is authorized to do this.
-		String home = req.getParameter("home", "/");
+		String home = filter(req.getParameter("home", "/"));
 		if (!req.userHasRole("admin")) { res.redirect(home); return; }
 
 		//Get the Users object.
@@ -123,7 +123,7 @@ public class MircUserManagerServlet extends Servlet {
 	public void doPost(HttpRequest req, HttpResponse res) {
 
 		//Make sure the user is authorized to do this.
-		String home = req.getParameter("home", "/");
+		String home = filter(req.getParameter("home", "/"));
 		if (!req.userHasRole("admin")) { res.redirect(home); return; }
 
 		boolean canShutdown = req.userHasRole("shutdown") || req.isFromLocalHost();
@@ -138,6 +138,9 @@ public class MircUserManagerServlet extends Servlet {
 			return;
 		}
 		UsersXmlFileImpl usersXmlFileImpl = (UsersXmlFileImpl)users;
+
+		//Get the roles known to the system
+		java.util.HashSet<java.lang.String> systemRoles = usersXmlFileImpl.getRoles();
 
 		String contentType = req.getContentType().toLowerCase();
 
@@ -158,6 +161,7 @@ public class MircUserManagerServlet extends Servlet {
 				if (files.size() > 0) {
 					File csvFile = files.getFirst().getFile();
 					String csv = FileUtil.getText(csvFile);
+					csv = csv.replaceAll( "[\\n\\r]+", "\n" );
 					String[] lines = csv.split("\n");
 					CSVFields fields = new CSVFields(lines[0]);
 					for (int i=1; i<lines.length; i++) {
@@ -171,7 +175,7 @@ public class MircUserManagerServlet extends Servlet {
 							}
 							for (int k=0; k<fields.getNumberOfRoles(); k++) {
 								String rolename = fields.getRoleName(k);
-								if (fields.hasRole(x, k)) user.addRole(rolename);
+								if (fields.hasRole(x, k) && systemRoles.contains(rolename)) user.addRole(rolename);
 								else user.removeRole(rolename);
 							}
 							newUserTable.put(username, user);
@@ -186,7 +190,7 @@ public class MircUserManagerServlet extends Servlet {
 						}
 					}
 				//Reset the users database from the hashtable.
-				usersXmlFileImpl.resetUsers(newUserTable);
+				if (newUserTable.size() > 0) usersXmlFileImpl.resetUsers(newUserTable);
 				}
 			}
 			catch (Exception redisplayPage) { }
@@ -238,14 +242,20 @@ public class MircUserManagerServlet extends Servlet {
 					//(Only process existing users with the shutdown
 					//role if the current user has the shutdown role.)
 					if (canShutdown || !user.hasRole("shutdown")) {
-						//Update the password and roles.
+						//Update the password, if present.
 						String pw = getValue(params,values,"p",i).trim();
 						if (!pw.equals("")) user.setPassword( usersXmlFileImpl.convertPassword(pw) );
+						//Update the roles
 						for (int j=0; j<nRoles; j++) {
-							String role = getValue(params,values,"cb",i,j);
-							if (canShutdown || !roleNames[j].equals("shutdown")) {
-								if (!role.equals("")) user.addRole(roleNames[j]);
-								else user.removeRole(roleNames[j]);
+							String roleName = roleNames[j];
+							boolean roleEnabled = !getValue(params,values,"cb",i,j).equals("");
+							if (canShutdown || !roleName.equals("shutdown")) {
+								//Only assign roles that are known to the system.
+								//This prevents an attack that creates roles.
+								//Such an attack doesn't do any harm, but the
+								//IBM security suite complains about it.
+								if (roleEnabled && systemRoles.contains(roleName)) user.addRole(roleName);
+								else user.removeRole(roleName);
 							}
 						}
 						newUserTable.put(username,user);
@@ -380,11 +390,6 @@ public class MircUserManagerServlet extends Servlet {
 			}
 		}
 		return "";
-	}
-
-	//Filter a string for cross-site scripting characters (<>)
-	private String filter(String s) {
-		return s.replaceAll("<[^>]*>","");
 	}
 
 	//Find the maximum index value of a named parameter

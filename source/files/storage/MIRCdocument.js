@@ -97,9 +97,14 @@ function saveImages(fileurl) {
 }
 
 //export button zip extension handler
-function exportZipFile(url,target, myEvent) {
+function exportZipFile(url, target, myEvent) {
 	if (getEvent(myEvent).altKey) url += "&ext=mrz";
-	openURL(url,target);
+	openURL(url, target);
+}
+
+//anonymize button handler
+function anonymizeDicomObjects(url, target) {
+	openURL(url, target);
 }
 
 var deleteURL = "";
@@ -425,6 +430,7 @@ function highlightToken() {
 
 function displayImage() {
 	if (IMAGES.hasCurrentIMAGESET()) {
+		IMAGES.setIndexForSeries();
 		var place = document.getElementById('rimagecenter');
 		while (place.firstChild != null) place.removeChild(place.firstChild);
 		var imageSet = IMAGES.currentIMAGESET;
@@ -441,6 +447,10 @@ function displayImage() {
 		while (imagenumber.firstChild != null) imagenumber.removeChild(imagenumber.firstChild);
 		imagenumber.appendChild(document.createTextNode("Image: " + (IMAGES.currentIndex+1)));
 
+		enableButton('navpop','inline'); //enable the series panel
+
+		if (imageSet.hasVideo()) enableButton('vidbtn','inline');
+		else disableButton('vidbtn','none');
 
 		if (imageSet.hasAnnotation()) enableButton('annbtn','inline');
 		else disableButton('annbtn','none');
@@ -457,6 +467,11 @@ function displayImage() {
 		if (!IMAGES.lastIsCurrent()) enableButton('nextimg','inline');
 		else disableButton('nextimg','inline');
 
+		enableButton("prevseries", "inline");
+		enableButton("prevseriesimg", "inline");
+		enableButton("nextseries", "inline");
+		enableButton("nextseriesimg", "inline");
+
 		imageSet.annotationDisplayed = false;
 
 		return true;
@@ -468,11 +483,17 @@ function setCaptions(imageSet) {
 	var capdiv = document.getElementById('captions');
 	while (capdiv.firstChild != null) capdiv.removeChild(capdiv.firstChild);
 
-	if (!imageSet.hasCaption()) {
+	if (!imageSet.hasCaption() && !imageSet.hasStudyDesc() && !imageSet.hasSeriesDesc()) {
 		capdiv.style.display = "none";
 	}
 	else {
 		capdiv.style.display = "block";
+		if (imageSet.hasStudyDesc()) {
+			setCaption(capdiv, imageSet.studyDesc, false);
+		}
+		if (imageSet.hasSeriesDesc()) {
+			setCaption(capdiv, imageSet.seriesDesc, false);
+		}
 		if (imageSet.hasACaption()) {
 			setCaption(capdiv, imageSet.aCaption, false);
 		}
@@ -511,22 +532,32 @@ function showClickableCaption() {
 }
 
 function disableButton(id, display) {
-	var b = document.getElementById(id)
-	b.disabled = true;
-	b.style.backgroundColor = 'gray';
-	b.style.fontWeight = 'bold';
-	b.style.visibility = 'hidden';
-	b.style.display = display;
+	var b = document.getElementById(id);
+	if (b) {
+		b.disabled = true;
+		b.style.backgroundColor = 'gray';
+		b.style.fontWeight = 'bold';
+		b.style.visibility = 'hidden';
+		b.style.display = display;
+	}
 }
 
 function enableButton(id, display) {
-	var b = document.getElementById(id)
-	b.disabled = false;
-	b.style.backgroundColor = '#2977b9';
-	b.style.color = 'white';
-	b.style.fontWeight = 'bold';
-	b.style.visibility = 'visible';
-	b.style.display = display;
+	var b = document.getElementById(id);
+	if (b) {
+		b.disabled = false;
+		b.style.backgroundColor = '#2977b9';
+		b.style.color = 'white';
+		b.style.fontWeight = 'bold';
+		b.style.visibility = 'visible';
+		b.style.display = display;
+	}
+}
+
+function displayVideo() {
+	if (IMAGES.hasCurrentIMAGESET()) {
+		window.open(IMAGES.currentIMAGESET.vImage.src, "_blank");
+	}
 }
 
 function displayAnnotation() {
@@ -637,11 +668,11 @@ function fetchOriginal() {
 function fetchModality(myEvent) {
 	if (IMAGES.hasCurrentIMAGESET()) {
 		var imageSet = IMAGES.currentIMAGESET;
-		myEvent = getEvent(myEvent)
+		myEvent = getEvent(myEvent);
 		var imagePath = dirPath + "/" + imageSet.ofImage.src;
 		if (myEvent.altKey)
 			//alt key generates a DICOM dataset dump
-			openURL(imagePath+"?dicom","_blank");
+			openURL(imagePath+"?dicom", (IE?"_blank":"_self"));
 		else if (myEvent.ctrlKey)
 			//ctrl key downloads the file
 			openURL(imagePath,"_self");
@@ -739,71 +770,82 @@ function wheel(event){
 
 function keyDown(event) {
 	if (!event) event = window.event;
-	var nextImage = IMAGES.currentIndex + 1;
 	var kc = event.keyCode;
-	if (kc == 36) nextImage = 1; //HOME
-	else if (kc == 35) nextImage = IMAGES.length(); //END
-	else if (kc == 38) nextImage--; //UP ARROW
-	else if (kc == 40) nextImage++; //DOWN ARROW
 
-	else if ((kc == 109) || (kc == 189)) { //MINUS
+	if (kc == 33) { //PAGE UP
+		pageUP();
+		return;
+	}
+
+	if (kc == 34) { //PAGE DOWN
+		pageDOWN();
+		return;
+	}
+
+	if ((kc == 109) || (kc == 189)) { //MINUS
 		IMAGES.autozoom = false;
 		displayImage();
 		return;
 	}
 
-	else if ((kc == 107) || (kc == 187)) { //PLUS or EQUAL
+	if ((kc == 107) || (kc == 187)) { //PLUS or EQUAL
 		IMAGES.autozoom = true;
 		displayImage();
 		return;
 	}
 
-	else if (kc == 37) { //LEFT ARROW
-		if (horizontalSplit) horizontalSplit.moveSlider(-10, displayImage);
-		return;
-	}
-	else if (kc == 39) { //RIGHT ARROW
-		if (horizontalSplit) horizontalSplit.moveSlider(+10, displayImage);
-		return;
-	}
-	else if (kc == 33) { //PAGE UP
-		if (horizontalSplit) {
-			var slider = horizontalSplit.leftWidth;
-			if (slider > 1) lastSliderPosition = slider;
-			horizontalSplit.moveSliderTo(1, displayImage);
-			setCookie("maxrightpane", "yes");
-		}
-		return;
-	}
-	else if (kc == 34) { //PAGE DOWN
-		var pos = findObject(document.body);
-		if (horizontalSplit) {
-			var slider = horizontalSplit.leftWidth;
-			if ((lastSliderPosition > 0) && (slider != lastSliderPosition)) {
-				horizontalSplit.moveSliderTo(lastSliderPosition, displayImage);
-			}
-			else {
-				horizontalSplit.moveSliderTo(pos.w - imagePaneWidth - 7, displayImage);
-			}
-			setCookie("maxrightpane", "no");
-		}
-		return;
-	}
+	dehighlightToken();
+	if (kc == 36) IMAGES.firstIMAGESETinSeries(); //HOME
 
-	if (kc != 17) {
-		if (!event.ctrlKey) loadImage(nextImage);
-		else loadAnnotation(nextImage);
+	else if (kc == 35) IMAGES.lastIMAGESETinSeries(); //END
+
+	else if (kc == 38) IMAGES.lastViewedIMAGESETinPrevSeries(); //UP ARROW
+
+	else if (kc == 40) IMAGES.lastViewedIMAGESETinNextSeries(); //DOWN ARROW
+
+	else if (kc == 37) IMAGES.prevIMAGESETinSeries(); //LEFT ARROW
+
+	else if (kc == 39) IMAGES.nextIMAGESETinSeries(); //RIGHT ARROW
+
+	//Decide whether to display the original or the annotation based on the ctrl key.
+	if (kc != 17) { //CTRL
+		if (!event.ctrlKey) loadImage(IMAGES.currentIndex+1);
+		else loadAnnotation(IMAGES.currentIndex+1);
 	}
 	else {	//annotations on current image
 		if (!IMAGES.currentIMAGESET.annotationDisplayed) {
 			displayAnnotation();
 		}
 	}
+	highlightToken();
 }
 function keyUp(event) {
 	if (!event) event = window.event;
 	if (event.keyCode == 17) {
 		if (IMAGES.currentIMAGESET.annotationDisplayed) displayImage();
+	}
+}
+
+function pageUP() {
+	if (horizontalSplit) {
+		var slider = horizontalSplit.leftWidth;
+		if (slider > 1) lastSliderPosition = slider;
+		horizontalSplit.moveSliderTo(1, displayImage);
+		setCookie("maxrightpane", "yes");
+	}
+}
+
+function pageDOWN() {
+	var pos = findObject(document.body);
+	if (horizontalSplit) {
+		var slider = horizontalSplit.leftWidth;
+		if ((lastSliderPosition > 0) && (slider != lastSliderPosition)) {
+			horizontalSplit.moveSliderTo(lastSliderPosition, displayImage);
+		}
+		else {
+			horizontalSplit.moveSliderTo(pos.w - imagePaneWidth - 7, displayImage);
+		}
+		setCookie("maxrightpane", "no");
 	}
 }
 
@@ -915,6 +957,24 @@ function exportHandler() {
 	if (req.success()) {
 		alert(req.responseText());
 	}
+}
+
+function showSeriesHelpPopup() {
+	var id = "seriesHelpPopupID";
+	var pop = document.getElementById(id);
+	if (pop) pop.parentNode.removeChild(pop);
+
+	var div = document.createElement("DIV");
+	div.className = "content";
+	var w = 475;
+	var h = 525;
+	var iframe = document.createElement("IFRAME");
+	iframe.style.width = w - 30;
+	iframe.style.height = h - 55;
+	iframe.src = "/storage/SeriesHelp.html";
+	div.appendChild(iframe);
+	var closebox = "/icons/closebox.gif";
+	showDialog(id, w, h, "Series Navigation Help", closebox, null, div, null, null);
 }
 
 
@@ -1184,3 +1244,85 @@ function assignScores() {
 	var url = "/quizmgr"+docIndexEntry;
 	openURL(url, "_blank");
 }
+
+function showNavPopup() {
+	var id = "navpopup";
+	var w = 126;
+	var h = 150;
+	var div = document.getElementById(id);
+	if (div != null) div.parentNode.removeChild(div);
+
+	div = document.createElement("DIV");
+	div.appendChild(getNavImg("/icons/go-first.png", goFirstHandler));
+	div.appendChild(getNavImg("/icons/go-up.png", goUpHandler));
+	div.appendChild(getNavImg("/icons/go-last.png", goLastHandler));
+	div.appendChild(document.createElement("BR"));
+	div.appendChild(getNavImg("/icons/go-previous.png", goPreviousHandler));
+	div.appendChild(getNavImg("/icons/go-down.png", goDownHandler));
+	div.appendChild(getNavImg("/icons/go-next.png", goNextHandler));
+	div.appendChild(document.createElement("BR"));
+	div.appendChild(getNavImg("/icons/go-top.png", goTopHandler, "15px"));
+	div.appendChild(getNavImg("/icons/go-bottom.png", goBottomHandler, "5px"));
+
+	showDialog(id, w, h, "Series", "/icons/closebox.gif", null, div, null, null);
+
+	var bodyPos = findObject(document.body);
+	var pop = document.getElementById(id);
+	pop.style.left = "2px";
+	pop.style.top = (bodyPos.h - h - 2) + "px";
+}
+
+function getNavImg(url, handler, marginLeft) {
+	var img = document.createElement("IMG");
+	img.src = url;
+	img.style.width = "36px";
+	img.style.height = "36px";
+	img.style.padding = "3px";
+	if (marginLeft) img.style.marginLeft = marginLeft;
+	img.onclick = handler;
+	return img;
+}
+
+function goFirstHandler() {
+	dehighlightToken();
+	IMAGES.firstIMAGESETinSeries();
+	loadImage(IMAGES.currentIndex+1)
+	highlightToken();
+}
+function goUpHandler() {
+	dehighlightToken();
+	IMAGES.lastViewedIMAGESETinPrevSeries();
+	loadImage(IMAGES.currentIndex+1)
+	highlightToken();
+}
+function goLastHandler() {
+	dehighlightToken();
+	IMAGES.lastIMAGESETinSeries();
+	loadImage(IMAGES.currentIndex+1)
+	highlightToken();
+}
+function goPreviousHandler() {
+	dehighlightToken();
+	IMAGES.prevIMAGESETinSeries();
+	loadImage(IMAGES.currentIndex+1)
+	highlightToken();
+}
+function goDownHandler() {
+	dehighlightToken();
+	IMAGES.lastViewedIMAGESETinNextSeries();
+	loadImage(IMAGES.currentIndex+1)
+	highlightToken();
+}
+function goNextHandler() {
+	dehighlightToken();
+	IMAGES.nextIMAGESETinSeries();
+	loadImage(IMAGES.currentIndex+1)
+	highlightToken();
+}
+function goTopHandler() {
+	pageUP();
+}
+function goBottomHandler() {
+	pageDOWN();
+}
+

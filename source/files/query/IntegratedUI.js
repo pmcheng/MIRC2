@@ -48,6 +48,7 @@ function loaded() {
 	setVisibility("AuthorTools", user.hasRole("author"));
 	setVisibility("FileCabinets", user.isLoggedIn);
 	setVisibility("ApprovalQueue", user.hasRole("publisher"));
+	setVisibility("Special", user.hasRole("admin"));
 	setVisibility("Admin", user.hasRole("admin"));
 	setVisibility("CaseOfTheDay", (codURL != ""));
 
@@ -336,6 +337,7 @@ function deselectAll() {
 	deselectCollection("AllDocuments");
 	deselectCollection("DraftDocuments");
 	deselectCollection("ApprovalQueue");
+	deselectCollection("Special");
 	deselectLink("Download");
 	if (confTreeManager) confTreeManager.closePaths();
 	if (fileTreeManager) fileTreeManager.closePaths();
@@ -423,6 +425,19 @@ function queryAllTemp() {
 function queryTemp() {
 	doQuery(getBaseQuery() + "&temp=yes");
 	selectCollection(queryTemp, "DraftDocuments");
+}
+
+function specialNew() {
+	firstResult = 1;
+	special();
+}
+
+function special() {
+	if (user.isLoggedIn) {
+		doQuery(getBaseQuery() + "&special=yes");
+		selectCollection(special, "Special");
+	}
+	else queryAll();
 }
 
 function approvalQueueNew() {
@@ -529,6 +544,7 @@ var blanks = "\u00A0\u00A0";
 
 function processQueryResults(req) {
 	if (queryIsActive && req.success()) {
+		queryIsActive = false;
 		var xml = req.responseXML();
 		var qr = xml ? xml.firstChild : null;
 		if (qr) {
@@ -543,7 +559,6 @@ function processQueryResults(req) {
 					var md = mds[i];
 					appendDocument(scrollableTable.tbody, md);
 				}
-				selectAll();
 				scrollableTable.rationalize();
 				resizeScrollableTable();
 				scrollableTable.bodyTable.parentNode.onresize = resizeScrollableTable;
@@ -770,9 +785,10 @@ function makeLinks(includeNextPrev) {
 	}
 	div.appendChild( makeUnknownsLink() );
 	div.appendChild( makeLink(displayCN, "/mirc/images/film-projector.gif", "Display the selected cases in the Case Navigator") );
+	div.appendChild( makeLink(getPresentation, "/mirc/images/presentation.png", "Export the selected local cases as a presentation") );
 
 	if (user.isLoggedIn && user.hasRole("admin")) {
-		var myr = makeLink(getQuizSummary, "/mirc/images/quizsummary.png", "Quiz summary for the selected local cases");
+		var myr = makeLink(getQuizSummary, "/mirc/images/quizsummary.png", "Display the quiz summary for the selected local cases");
 		div.appendChild( myr );
 	}
 
@@ -780,6 +796,12 @@ function makeLinks(includeNextPrev) {
 		var myr = makeLink(sendToMyRSNA, "/mirc/images/myrsna.png", "Export the selected local cases to myRSNA Files");
 		myr.style.marginLeft = "5px";
 		div.appendChild( myr );
+	}
+
+	if (user.isLoggedIn) {
+		var dd = makeLink(deleteDocuments, "/mirc/images/trash.png", "Delete the selected local cases");
+		dd.style.marginLeft = "5px";
+		div.appendChild( dd );
 	}
 	return div;
 }
@@ -989,79 +1011,77 @@ function toggleSelect() {
 	}
 }
 
-function displayCN() {
+function getSelectedURLs() {
+	var selected = new Object();
+	selected.count = 0;
+	selected.urls = "";
 	if (scrollableTable) {
 		var tbody = scrollableTable.tbody;
 		var cbs = tbody.getElementsByTagName("INPUT");
-		var urls = "";
 		for (var i=0; i<cbs.length; i++) {
 			var cb = cbs[i];
 			if ((cb.type == "checkbox") && cb.checked) {
 				var td = cb.parentNode.nextSibling;
 				var a = td.getElementsByTagName("A")[0];
 				var url = a.getAttribute("href");
-				if (urls != "") urls += "|";
-				urls += url;
+				if (selected.count > 0) selected.urls += "|";
+				selected.urls += url;
+				selected.count++;
 			}
 		}
-		if (urls != "") {
-			window.open("/casenav?suppressHome=yes&urls="+encodeURIComponent(urls), "shared");
-		}
+	}
+	return selected;
+}
+
+function getPresentation() {
+	var selected = getSelectedURLs();
+	if (selected.count > 5) {
+		if (!confirm("You have selected "+selected.count+" documents\nto include in the presentation.\n"
+				   + "Are you sure you want to proceed?")) return;
+	}
+	if (selected.count > 0) {
+		window.open("/presentation?urls="+encodeURIComponent(selected.urls), "_self");
+	}
+}
+
+function displayCN() {
+	var selected = getSelectedURLs();
+	if (selected.count > 0) {
+		window.open("/casenav?suppressHome=yes&urls="+encodeURIComponent(selected.urls), "shared");
 	}
 }
 
 function getQuizSummary() {
-	if (scrollableTable) {
-		var tbody = scrollableTable.tbody;
-		var cbs = tbody.getElementsByTagName("INPUT");
-		var urls = "";
-		var count = 0;
-		for (var i=0; i<cbs.length; i++) {
-			var cb = cbs[i];
-			if ((cb.type == "checkbox") && cb.checked) {
-				var td = cb.parentNode.nextSibling;
-				var a = td.getElementsByTagName("A")[0];
-				var url = a.getAttribute("href");
-				if (urls != "") urls += "|";
-				urls += url;
-				count++;
-			}
-		}
-		if (count > 0) {
-			window.open("/quizsummary?suppressHome=yes&urls="+encodeURIComponent(urls), "shared");
-		}
+	var selected = getSelectedURLs();
+	if (selected.count > 0) {
+		window.open("/quizsummary?suppressHome=yes&urls="+encodeURIComponent(selected.urls), "shared");
 	}
 }
 
 function sendToMyRSNA() {
-	if (scrollableTable) {
-		var tbody = scrollableTable.tbody;
-		var cbs = tbody.getElementsByTagName("INPUT");
-		var urls = "";
-		var count = 0;
-		for (var i=0; i<cbs.length; i++) {
-			var cb = cbs[i];
-			if ((cb.type == "checkbox") && cb.checked) {
-				var td = cb.parentNode.nextSibling;
-				var a = td.getElementsByTagName("A")[0];
-				var url = a.getAttribute("href");
-				if (urls != "") urls += "|";
-				urls += url;
-				count++;
-			}
+	var selected = getSelectedURLs();
+	if (selected.count > 5) {
+		if (!confirm("You have selected "+selected.count+" documents.\n"
+				   + "Are you sure you want to proceed?")) return;
+	}
+	if (selected.count > 0) {
+		var req = new AJAX();
+		req.GET("/myrsna", "urls="+encodeURIComponent(selected.urls)+"&"+req.timeStamp(), null);
+		if (req.success()) {
+			alert(req.responseText());
 		}
-		if (count > 5) {
-			if (!confirm("You have selected "+count+" documents.\n"
-					   + "Are you sure you want to proceed?")) return;
-		}
-		if (count > 0) {
-			var req = new AJAX();
-			req.GET("/myrsna", "urls="+encodeURIComponent(urls)+"&"+req.timeStamp(), null);
-			if (req.success()) {
-				alert(req.responseText());
-			}
-			else alert("Unable to export to myRSNA");
-		}
+		else alert("Unable to export to myRSNA");
+	}
+}
+
+function deleteDocuments() {
+	var selected = getSelectedURLs();
+	if (selected.count > 0) {
+		if (!confirm("You have selected "+selected.count
+				   + " document"+((selected.count > 1) ? "s" : "")
+				   + " to delete.\n"
+				   + "Are you sure you want to proceed?")) return;
+		window.open("/delete?urls="+encodeURIComponent(selected.urls), "_self");
 	}
 }
 

@@ -18,12 +18,14 @@ import mirc.bauth.*;
 import mirc.casenav.*;
 import mirc.comment.*;
 import mirc.confs.*;
+import mirc.delete.*;
 import mirc.download.*;
 import mirc.files.*;
 import mirc.fsadmin.*;
 import mirc.login.*;
 import mirc.myrsna.*;
 import mirc.prefs.*;
+import mirc.presentation.*;
 import mirc.publish.*;
 import mirc.qsadmin.*;
 import mirc.query.*;
@@ -106,6 +108,7 @@ public class MIRC extends AbstractPlugin {
 		selector.addServlet("qsadmin", QueryServiceAdmin.class);
 		selector.addServlet("casenav", CaseNavigatorService.class);
 		selector.addServlet("confs", ConferenceService.class);
+		selector.addServlet("delete", DeleteService.class);
 		selector.addServlet("files", FileService.class);
 		selector.addServlet("fsadmin", FileServiceAdmin.class);
 		selector.addServlet("challenge", ChallengeServlet.class);
@@ -131,6 +134,7 @@ public class MIRC extends AbstractPlugin {
 		selector.addServlet("quizmgr", QuizManagerServlet.class);
 		selector.addServlet("quizsummary", QuizSummaryServlet.class);
 		selector.addServlet("quizanswers", QuizAnswerSummaryServlet.class);
+		selector.addServlet("presentation", PresentationService.class);
 
 		//Install the standard roles
 		Users users = Users.getInstance();

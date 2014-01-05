@@ -4,6 +4,7 @@ function IMAGESECTION() {
 	this.currentIndex = -1;
 	this.autozoom = true;
 	this.IMAGESETs = new Array();
+	this.studies = new Array();
 }
 
 IMAGESECTION.prototype.addIMAGESET = function(set) {
@@ -15,18 +16,81 @@ IMAGESECTION.prototype.addIMAGESET = function(set) {
 }
 
 IMAGESECTION.prototype.nextIMAGESET = function() {
-	if (this.currentIndex + 1 < this.IMAGESETs.length) {
-		this.currentIndex++;
-		this.currentIMAGESET = this.IMAGESETs[this.currentIndex];
+	return this.setCurrentIMAGESET(this.currentIndex + 1);
+}
+
+IMAGESECTION.prototype.nextIMAGESETinSeries = function() {
+	var x = this.currentIndex + 1;
+	if ((x < this.IMAGESETs.length) &&
+			(this.currentIMAGESET.study == this.IMAGESETs[x].study) &&
+				(this.currentIMAGESET.series == this.IMAGESETs[x].series)) {
+		this.setCurrentIMAGESET(x);
 	}
 	return this.currentIMAGESET;
 }
 
-IMAGESECTION.prototype.prevIMAGESET = function() {
-	if (this.currentIndex > 0) {
-		this.currentIndex--;
-		this.currentIMAGESET = this.IMAGESETs[this.currentIndex];
+IMAGESECTION.prototype.lastIMAGESETinSeries = function() {
+	var x = this.currentIndex;
+	while ( true ) {
+		this.nextIMAGESETinSeries();
+		if (x == this.currentIndex) break;
+		x = this.currentIndex;
 	}
+	return this.currentIMAGESET;
+}
+
+IMAGESECTION.prototype.firstIMAGESETinNextSeries = function() {
+	this.lastIMAGESETinSeries();
+	this.nextIMAGESET();
+	return this.currentIMAGESET;
+}
+
+IMAGESECTION.prototype.lastViewedIMAGESETinNextSeries = function() {
+	this.lastIMAGESETinSeries();
+	this.nextIMAGESET();
+	var index = this.getIndexForSeries();
+	if (index != -1) this.setCurrentIMAGESET(index);
+	else this.firstIMAGESETinSeries();
+	return this.currentIMAGESET;
+}
+
+IMAGESECTION.prototype.prevIMAGESET = function() {
+	return this.setCurrentIMAGESET(this.currentIndex - 1);
+}
+
+IMAGESECTION.prototype.prevIMAGESETinSeries = function() {
+	var x = this.currentIndex - 1;
+	if ((x >= 0) &&
+			(this.currentIMAGESET.study == this.IMAGESETs[x].study) &&
+				(this.currentIMAGESET.series == this.IMAGESETs[x].series)) {
+		this.setCurrentIMAGESET(x);
+	}
+	return this.currentIMAGESET;
+}
+
+IMAGESECTION.prototype.firstIMAGESETinSeries = function() {
+	var x = this.currentIndex;
+	while ( true ) {
+		this.prevIMAGESETinSeries();
+		if (x == this.currentIndex) break;
+		x = this.currentIndex;
+	}
+	return this.currentIMAGESET;
+}
+
+IMAGESECTION.prototype.firstIMAGESETinPrevSeries = function() {
+	this.firstIMAGESETinSeries();
+	this.prevIMAGESET();
+	this.firstIMAGESETinSeries();
+	return this.currentIMAGESET;
+}
+
+IMAGESECTION.prototype.lastViewedIMAGESETinPrevSeries = function() {
+	this.firstIMAGESETinSeries();
+	this.prevIMAGESET();
+	var index = this.getIndexForSeries();
+	if (index != -1) this.setCurrentIMAGESET(index);
+	else this.firstIMAGESETinSeries();
 	return this.currentIMAGESET;
 }
 
@@ -67,6 +131,31 @@ IMAGESECTION.prototype.firstIsCurrent = function() {
 
 IMAGESECTION.prototype.lastIsCurrent = function() {
 	return (this.currentIndex == (this.IMAGESETs.length - 1));
+}
+
+IMAGESECTION.prototype.setIndexForSeries = function() {
+	if (this.currentIMAGESET) {
+		var study = this.currentIMAGESET.study;
+		var series = this.currentIMAGESET.series;
+		var seriesTable = this.studies[study];
+		if (seriesTable == null) {
+			seriesTable = new Array();
+			this.studies[study] = seriesTable;
+		}
+		seriesTable[series] = this.currentIndex;
+	}
+}
+
+IMAGESECTION.prototype.getIndexForSeries = function() {
+	if (this.currentIMAGESET) {
+		var study = this.currentIMAGESET.study;
+		var series = this.currentIMAGESET.series;
+		var seriesTable = this.studies[study];
+		if (seriesTable == null) return -1;
+		var index = seriesTable[series];
+		if (index != null) return index;
+	}
+	return -1;
 }
 
 IMAGESECTION.prototype.toString = function() {
@@ -144,6 +233,7 @@ function IMAGESET() {
 	this.pImage = null;
 	this.sImage = null;
 	this.aImage = null;
+	this.vImage = null;
 	this.osImage = null;
 	this.ofImage = null;
 	this.aCaption = "";
@@ -151,6 +241,13 @@ function IMAGESET() {
 	this.cFlag = false;
 	this.annotationDisplayed = false;
 	this.annotationIsSVG = false;
+	this.study = "";
+	this.series = "";
+	this.acquisition = "";
+	this.instance = "";
+	this.date = "";
+	this.studyDesc = "";
+	this.seriesDesc = "";
 }
 
 IMAGESET.prototype.addIMAGE = function(type, src, w, h) {
@@ -165,6 +262,10 @@ IMAGESET.prototype.addCAPTION = function(type, caption) {
 	if (caption) {
 		this[type] = caption;
 	}
+}
+
+IMAGESET.prototype.hasVideo = function() {
+	return (this.vImage != null);
 }
 
 IMAGESET.prototype.hasAnnotation = function() {
@@ -183,12 +284,21 @@ IMAGESET.prototype.hasCCaption = function() {
 	return (this.cCaption != "");
 }
 
+IMAGESET.prototype.hasStudyDesc = function() {
+	return (this.studyDesc != "");
+}
+
+IMAGESET.prototype.hasSeriesDesc = function() {
+	return (this.seriesDesc != "");
+}
+
 IMAGESET.prototype.toString = function(n) {
 	var margin = "     ";
 	var s = "IMAGESET" + ((n!=null) ? "["+n+"]" : "") + ":\n";
 	if (this.pImage != null) s += margin + "pImage: " + this.pImage.toString();
 	if (this.sImage != null) s += margin + "sImage: " + this.sImage.toString();
 	if (this.aImage != null) s += margin + "aImage: " + this.aImage.toString();
+	if (this.vImage != null) s += margin + "vImage: " + this.vImage.toString();
 	if (this.osImage != null) s += margin + "osImage: " + this.osImage.toString();
 	if (this.ofImage != null) s += margin + "ofImage: " + this.osImage.toString();
 	if (this.aCaption != "") s += margin + "aCaption: ["+this.aCaption+"]\n";

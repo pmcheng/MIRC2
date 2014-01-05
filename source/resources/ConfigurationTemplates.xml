@@ -38,10 +38,10 @@
 			<attr name="anonymize" required="yes" default="no" options="yes|no">
 				<helptext>Anonymize received DICOM objects</helptext>
 			</attr>
-			<attr name="script" required="no" default="scripts/TCEServiceAnonymizer.script">
+			<attr name="script" required="yes" default="scripts/TCEServiceAnonymizer.script">
 				<helptext>File name of DicomAnonymizer script</helptext>
 			</attr>
-			<attr name="lookupTable" required="no" default="scripts/TCEServiceAnonymizerLookupTable.properties">
+			<attr name="lookupTable" required="yes" default="scripts/TCEServiceAnonymizerLookupTable.properties">
 				<helptext>File name of DicomAnonymizer lookup table</helptext>
 			</attr>
 			<attr name="ssid" required="no" default="ss1">
@@ -99,24 +99,12 @@
 				quarantine="quarantines/DicomService/DicomDecompressor"
 				root="roots/DicomService/DicomDecompressor"
 				script="scripts/DicomDecompressor.script"/>
-			<ObjectCache
-				class="org.rsna.ctp.stdstages.ObjectCache"
-				collectGarbage="yes"
-				root="roots/DicomService/ObjectCache"
-				name="ObjectCache"/>
 			<DicomPixelAnonymizer
 				class="org.rsna.ctp.stdstages.DicomPixelAnonymizer"
 				name="DicomPixelAnonymizer"
 				quarantine="quarantines/DicomService/DicomPixelAnonymizer"
 				root="roots/DicomService/DicomPixelAnonymizer"
 				script="scripts/dicom-pixel-anonymizer.script"/>
-			<Anonymizer
-				class="org.rsna.ctp.stdstages.DicomAnonymizer"
-				lookupTable="scripts/LookupTable.properties"
-				name="DICOM Service DicomAnonymizer - ForcePatientID"
-				quarantine="quarantines/DicomService/ForcePatientID"
-				root="roots/DicomService/ForcePatientID"
-				script="scripts/ForcePatientID.script"/>
 			<MircDocumentStorageService
 				caseTag="PatientID"
 				class="mirc.stages.MircDocumentStorageService"

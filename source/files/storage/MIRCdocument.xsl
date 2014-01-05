@@ -11,6 +11,7 @@
 <xsl:param name="user-is-admin"/>
 <xsl:param name="user-is-publisher"/>
 <xsl:param name="user-can-post"/>
+<xsl:param name="mobile-device"/>
 
 <xsl:param name="edit-url"/>
 <xsl:param name="revert-url"/>
@@ -19,7 +20,9 @@
 <xsl:param name="publish-url"/>
 <xsl:param name="delete-url"/>
 <xsl:param name="ppt-export-url"/>
+<xsl:param name="anonymize-url"/>
 <xsl:param name="zip-export-url"/>
+<xsl:param name="dicom-export-url"/>
 <xsl:param name="filecabinet-url"/>
 <xsl:param name="post-url"/>
 
@@ -218,16 +221,27 @@
 	<div id="rightside" class="rightside">
 		<div id="rbuttons" class="rbuttons">
 			<span id="imagenav" class="imagenav">
-				<input id="previmg" type="button" value="&lt;&lt;&lt;" disabled="true" onclick="prevImage()"/>
-				&#160;
-				<span id="imagenumber" class="imagenumber"></span>
-				&#160;
-				<input id="nextimg" type="button" value="&gt;&gt;&gt;" disabled="true" onclick="nextImage()"/>
+				<span>
+					<input id="previmg" type="button" value="&lt;&lt;&lt;" disabled="true" onclick="prevImage()" title="Previous Image in Document"/>
+					<input id="prevseries" type="button" value="&lt;&lt;" onclick="goUpHandler()" title="Previous Series"/>
+					<input id="prevseriesimg" type="button" value="&lt;" onclick="goPreviousHandler()" title="Previous Image in Series"/>
+					&#160;
+					<span id="imagenumber" class="imagenumber"></span>
+					&#160;
+					<input id="nextseriesimg" type="button" value="&gt;" onclick="goNextHandler()" title="Next Image in Series"/>
+					<input id="nextseries" type="button" value="&gt;&gt;" onclick="goDownHandler()" title="Next Series"/>
+					<input id="nextimg" type="button" value="&gt;&gt;&gt;" disabled="true" onclick="nextImage()" title="Next Image in Document"/>
+				</span>
 			</span>
 			<span id="selbuttons" class="selbuttons">
+				<xsl:if test="$mobile-device = 'yes'">
+					<input id="navpop" type="button" value="Series Panel" disabled="true" onclick="showNavPopup()"/>
+				</xsl:if>
+				<input id="vidbtn" type="button" value="Video" disabled="true" onclick="displayVideo()"/>
 				<input id="annbtn" type="button" value="Annotations" disabled="true" onclick="displayAnnotation()"/>
 				<input id="orgbtn" type="button" value="Original Size" disabled="true" onclick="fetchOriginal()"/>
 				<input id="dcmbtn" type="button" value="Original Format" disabled="true" onclick="fetchModality(event)"/>
+				<img src="/icons/help.png" onclick="showSeriesHelpPopup()" title="Show Series Navigation Help"/>
 			</span>
 		</div>
 		<div id="captions" class="captions"/>
@@ -506,6 +520,8 @@
 					<xsl:call-template name="zip-export-button"/>
 					<xsl:call-template name="export-to-button"/>
 					<xsl:call-template name="saveimages-button"/>
+					<xsl:call-template name="exportdicom-button"/>
+					<xsl:call-template name="anonymizedicom-button"/>
 					<xsl:call-template name="myrsna-button"/>
 					<xsl:call-template name="addimages-button"/>
 					<xsl:call-template name="sortimages-button"/>
@@ -554,6 +570,17 @@
 	</xsl:if>
 </xsl:template>
 
+<xsl:template name="exportdicom-button">
+	<xsl:if test="string-length($dicom-export-url)!=0">
+		<tr>
+			<td>
+				<input type="button" value="Export DICOM Files" title="Export the DICOM files in a zip file"
+					onclick="exportZipFile('{$dicom-export-url}','_self',event);"/>
+			</td>
+		</tr>
+	</xsl:if>
+</xsl:template>
+
 <xsl:template name="sortimages-button">
 	<xsl:if test="$sort-url and image-section and (//insert-image or //insert-megasave)">
 		<tr>
@@ -593,6 +620,17 @@
 			<td>
 				<input type="button" value="Download Slides" title="Download this document to your browser as a slide presentation"
 					onclick="exportZipFile('{$ppt-export-url}','_self',event);"/>
+			</td>
+		</tr>
+	</xsl:if>
+</xsl:template>
+
+<xsl:template name="anonymizedicom-button">
+	<xsl:if test="string-length($anonymize-url)!=0">
+		<tr>
+			<td>
+				<input type="button" value="Anonymize DICOM" title="Anonymize the DICOM files in this document"
+					onclick="anonymizeDicomObjects('{$anonymize-url}','_self');"/>
 			</td>
 		</tr>
 	</xsl:if>
@@ -1138,10 +1176,11 @@
 </xsl:template>
 
 <xsl:template name="script-init">
+	<xsl:variable name="quot">"</xsl:variable>
 	<script>
 		<xsl:variable name="remove">"'</xsl:variable>
-		<xsl:variable name="title"><xsl:value-of select="$processed-known-title"/></xsl:variable>
-		<xsl:variable name="alttitle"><xsl:value-of select="$processed-unknown-title"/></xsl:variable>
+		<xsl:variable name="title"><xsl:value-of select='translate($processed-known-title,$quot,"")'/></xsl:variable>
+		<xsl:variable name="alttitle"><xsl:value-of select='translate($processed-unknown-title,$quot,"")'/></xsl:variable>
 		<xsl:variable name="category"><xsl:value-of select="$cat"/></xsl:variable>
 		<xsl:variable name="author"><xsl:value-of select="normalize-space(/MIRCdocument/author/name)"/></xsl:variable>
 
@@ -1197,6 +1236,13 @@
 						<xsl:with-param name="type">aImage</xsl:with-param>
 					</xsl:call-template>
 				</xsl:if>
+				<xsl:variable name="vImage" select="alternative-image[@role='video']"/>
+				<xsl:if test="$vImage">
+					<xsl:call-template name="addIMAGE">
+						<xsl:with-param name="image" select="$vImage"/>
+						<xsl:with-param name="type">vImage</xsl:with-param>
+					</xsl:call-template>
+				</xsl:if>
 				<xsl:variable name="osImage" select="alternative-image[@role='original-dimensions']"/>
 				<xsl:if test="$osImage">
 					<xsl:call-template name="addIMAGE">
@@ -1230,6 +1276,15 @@
 							temp.addCAPTION('aCaption', 'Follow-up study at <xsl:value-of select="$delta"/> days');
 						</xsl:if>
 					</xsl:if>
+				</xsl:if>
+				<xsl:if test="order-by">
+					temp.study = '<xsl:value-of select="order-by/@study"/>';
+					temp.series = '<xsl:value-of select="order-by/@series"/>';
+					temp.acquisition = '<xsl:value-of select="order-by/@acquisition"/>';
+					temp.instance = '<xsl:value-of select="order-by/@instance"/>';
+					temp.date = '<xsl:value-of select="order-by/@date"/>';
+					temp.studyDesc = '<xsl:value-of select='translate(order-by/@study-desc,$remove,"")'/>';
+					temp.seriesDesc = '<xsl:value-of select='translate(order-by/@series-desc,$remove,"")'/>';
 				</xsl:if>
 				IMAGES.addIMAGESET(temp);
 			</xsl:for-each>

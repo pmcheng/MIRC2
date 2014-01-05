@@ -16,6 +16,7 @@ import java.util.GregorianCalendar;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.LinkedList;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
 import java.util.zip.ZipEntry;
@@ -47,6 +48,9 @@ import org.rsna.util.DigestUtil;
 import org.rsna.util.FileUtil;
 import org.rsna.util.StringUtil;
 import org.rsna.util.XmlUtil;
+
+import org.rsna.video.AVIOutputStream;
+//import org.jcodec.api.SequenceEncoder;
 
 /**
   * A class to encapsulate a MIRCdocument.
@@ -194,6 +198,8 @@ public class MircDocument {
 			String title = titleEl.getTextContent().trim();
 			title = title.replaceAll("\\s+", "_");
 			title = title.replaceAll("/", "-");
+			title = title.replaceAll("\\\\", "-");
+			title = title.replaceAll(":", "-");
 			if (title.length() > 0) name = title + "_" + name;
 		}
 		name += ext;
@@ -344,10 +350,10 @@ public class MircDocument {
 			images.appendChild(image);
 			image.setAttribute("name", name); //this is the value that indexes the image
 			image.setAttribute("src", src); //this is the value that points to the version to use
-			image.setAttribute("x", String.format("%.3fcm",xcm));
-			image.setAttribute("y", String.format("%.3fcm",ycm));
-			image.setAttribute("w", String.format("%.3fcm",wcm));
-			image.setAttribute("h", String.format("%.3fcm",hcm));
+			image.setAttribute("x", String.format(Locale.US, "%.3fcm", xcm));
+			image.setAttribute("y", String.format(Locale.US, "%.3fcm", ycm));
+			image.setAttribute("w", String.format(Locale.US, "%.3fcm", wcm));
+			image.setAttribute("h", String.format(Locale.US, "%.3fcm", hcm));
 
 			//Now copy the selected image to the Pictures directory
 			File inFile = new File(docDir, src);
@@ -1378,6 +1384,7 @@ public class MircDocument {
 
 	private void saveWWWLImage(DicomObject dob, Element el, int frame, int q, int wl, int ww) throws Exception {
 		if (el == null) return;
+		if (frame == -1) frame = dob.getNumberOfFrames() / 2;
 		String tag = el.getTagName();
 		String attr = el.getAttribute("role");
 		if (tag.equals("image") || (tag.equals("alternative-image") && (attr.equals("icon") || attr.equals("original-dimensions")))) {
@@ -1445,12 +1452,19 @@ public class MircDocument {
 		//Get the image size;
 		int imageWidth = dicomObject.getColumns();
 
+		//Choose the frame
+		int frame = dicomObject.getNumberOfFrames() / 2;
+
 		//Make the JPEG images
 		String name = dicomObject.getFile().getName();
 		String nameNoExt = name.substring(0, name.lastIndexOf("."));
-		Dimension d_base = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_base.jpeg"), 0, maxWidth, minWidth, jpegQuality);
-		Dimension d_icon = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_icon.jpeg"), 0, 64, 0, -1);
-		Dimension d_icon96 = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_icon96.jpeg"), 0, 96, 0, -1); //for the author service
+		Dimension d_base = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_base.jpeg"), frame, maxWidth, minWidth, jpegQuality);
+		Dimension d_icon = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_icon.jpeg"), frame, 64, 0, -1);
+		Dimension d_icon96 = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_icon96.jpeg"), frame, 96, 0, -1); //for the author service
+
+		//Make videos if possible
+		boolean hasAVI = makeAVI(dicomObject, 2, true);
+		//boolean hasMP4 = makeMP4(dicomObject, 2);
 
 		//If we are to update the document, make the image element and put it just before the insert-megasave element.
 		if (modifyDoc) {
@@ -1467,13 +1481,20 @@ public class MircDocument {
 			image.appendChild(icon);
 
 			if (imageWidth > maxWidth) {
-				Dimension d_full = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_full.jpeg"), 0, imageWidth, 0, jpegQuality);
+				Dimension d_full = dicomObject.saveAsJPEG(new File(docDir, nameNoExt+"_full.jpeg"), frame, imageWidth, 0, jpegQuality);
 				Element full  = doc.createElement("alternative-image");
 				full.setAttribute("src", nameNoExt+"_full.jpeg");
 				full.setAttribute("role", "original-dimensions");
 				full.setAttribute("w", Integer.toString(d_full.width));
 				full.setAttribute("h", Integer.toString(d_full.height));
 				image.appendChild(full);
+			}
+
+			if (hasAVI) {
+				Element video  = doc.createElement("alternative-image");
+				video.setAttribute("src", name+".avi");
+				video.setAttribute("role", "video");
+				image.appendChild(video);
 			}
 
 			if (!suppressOriginalFormat) {
@@ -1489,6 +1510,7 @@ public class MircDocument {
 
 			parent.insertBefore( image, insertionPoint );
 		}
+
 	}
 
 	//Handle the insert-image element for DicomObjects.
@@ -1514,12 +1536,15 @@ public class MircDocument {
 		int maxWidth = StringUtil.getInt( insertionPoint.getAttribute("width"), imageWidth );
 		int minWidth = StringUtil.getInt( insertionPoint.getAttribute("min-width"), 0 );
 
+		//Choose the frame
+		int frame = dicomObject.getNumberOfFrames() / 2;
+
 		//Make the JPEG images
 		String name = dicomObject.getFile().getName();
 		String nameNoExt = name.substring(0,name.lastIndexOf("."));
-		Dimension d_base = dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_base.jpeg"), 0, maxWidth, minWidth, jpegQuality);
-		Dimension d_icon = dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_icon.jpeg"), 0, 64, 0, -1);
-		Dimension d_icon96 = dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_icon96.jpeg"), 0, 96, 0, -1); //for the author service
+		Dimension d_base = dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_base.jpeg"), frame, maxWidth, minWidth, jpegQuality);
+		Dimension d_icon = dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_icon.jpeg"), frame, 64, 0, -1);
+		Dimension d_icon96 = dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_icon96.jpeg"), frame, 96, 0, -1); //for the author service
 
 		//If we are to update the document, make the image element and put it just before the insert-image element.
 		if (modifyDoc) {
@@ -1535,7 +1560,7 @@ public class MircDocument {
 			image.appendChild(base);
 
 			if (imageWidth > maxWidth) {
-				dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_full.jpeg"), 0, imageWidth, 0, jpegQuality);
+				dicomObject.saveAsJPEG(new File(docDir,nameNoExt+"_full.jpeg"), frame, imageWidth, 0, jpegQuality);
 			}
 
 			parent.insertBefore( image, insertionPoint );
@@ -1660,19 +1685,24 @@ public class MircDocument {
 		String nameNoExt = name.substring(0, name.lastIndexOf("."));
 		String ext = name.substring( name.lastIndexOf(".") + 1 );
 
-		Dimension d_icon = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_icon.jpeg"), 0, 64, 0, -1);
-		Dimension d_icon96 = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_icon96.jpeg"), 0, 96, 0, -1); //for the author service
+		//Choose the frame
+		int frame = 0;
+		if (mircImage.isDicomImage()) frame = mircImage.getDicomObject().getNumberOfFrames() / 2;
+
+		Dimension d_icon = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_icon.jpeg"), frame, 64, 0, -1);
+		Dimension d_icon96 = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_icon96.jpeg"), frame, 96, 0, -1); //for the author service
 
 		//Make the image element and put it just before the insert-image element.
 		Element image = doc.createElement("image");
 		if (mircImage.isDicomImage()) {
+
 			//It's a DICOM image; make the root image point to the original
 			image.setAttribute("href", name);
 			image.setAttribute("w", Integer.toString(imageWidth));
 			image.setAttribute("h", Integer.toString(imageHeight));
 
  			//Make the child point to the base image.
-			Dimension d_base = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_base.jpeg"), 0, maxWidth, minWidth, jpegQuality);
+			Dimension d_base = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_base.jpeg"), frame, maxWidth, minWidth, jpegQuality);
 			Element base = doc.createElement("image");
 			base.setAttribute("src", nameNoExt+"_base.jpeg");
 			base.setAttribute("w", Integer.toString(d_base.width));
@@ -1697,7 +1727,7 @@ public class MircDocument {
 			image.setAttribute("h", Integer.toString(imageHeight));
 
  			//Make the child point to the base image.
-			Dimension d_base = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_base.jpeg"), 0, maxWidth, minWidth, jpegQuality);
+			Dimension d_base = mircImage.saveAsJPEG(new File(docDir,nameNoExt+"_base.jpeg"), frame, maxWidth, minWidth, jpegQuality);
 			Element base = doc.createElement("image");
 			base.setAttribute("src", nameNoExt+"_base.jpeg");
 			base.setAttribute("w", Integer.toString(d_base.width));
@@ -1728,6 +1758,108 @@ public class MircDocument {
 			parent.insertBefore( caption, insertionPoint );
 		}
 	}
+
+	//*********************************************************************************************
+	//
+	//	Video
+	//
+	//*********************************************************************************************
+
+	/**
+	 * Create an AVI from a multi-frame DicomObject. The AVI is created in the
+	 * directory with the MIRCdocument. It has the same name as the DicomObject,
+	 * plus the .avi extension.
+	 * @param dicomObject the object
+	 * @param minFrames the minimum number of frames to process. DicomObjects with fewer than
+	 * this number of frames are not processed.
+	 * @param jpeg true if the output format is to be JPEG; false if it is to be RAW
+	 * @return true if an AVI was created; false otherwise.
+	 */
+	public boolean makeAVI(DicomObject dicomObject, int minFrames, boolean jpeg) {
+		boolean done = false;
+		int nFrames = dicomObject.getNumberOfFrames();
+		AVIOutputStream out = null;
+
+		if (dicomObject.isImage() && (nFrames > 0) && (nFrames >= minFrames)) {
+			try {
+				File aviFile = new File(docDir, dicomObject.getFile().getName()+".avi");
+				int rows = dicomObject.getRows();
+				int columns = dicomObject.getColumns();
+				int rate = StringUtil.getInt( dicomObject.getElementValue("RecommendedDisplayFrameRate"), 10 );
+
+				if (jpeg) {
+					out = new AVIOutputStream(aviFile, AVIOutputStream.VideoFormat.JPG);
+					out.setVideoDimension(columns, rows);
+					out.setFrameRate(rate);
+					File temp = File.createTempFile("DCM-", ".jpg");
+					for (int frame=0; frame<nFrames; frame++) {
+						dicomObject.saveAsJPEG(temp, frame, columns, columns, -1);
+						out.writeFrame(temp);
+					}
+					temp.delete();
+				}
+				else {
+					out = new AVIOutputStream(aviFile, AVIOutputStream.VideoFormat.RAW);
+					out.setVideoDimension(columns, rows);
+					out.setFrameRate(rate);
+					for (int frame=0; frame<nFrames; frame++) {
+						out.writeFrame(dicomObject.getScaledBufferedImage(frame, columns, columns));
+					}
+				}
+				done = true;
+			}
+			catch (Exception ex) { logger.warn("Unable to create AVI", ex); }
+			finally {
+				if (out != null) {
+					try { out.finish(); }
+					catch (Exception unable) { }
+					try { out.close(); }
+					catch (Exception unable) { }
+				}
+			}
+		}
+		return done;
+	}
+
+	/**
+	 * Create an MP4 from a multi-frame DicomObject. The MP4 is created in the
+	 * directory with the MIRCdocument. It has the same name as the DicomObject,
+	 * plus the .mp4 extension.
+	 * @param dicomObject the object
+	 * @param minFrames the minimum number of frames to process. DicomObjects with fewer than
+	 * this number of frames are not processed.
+	 * @return true if an MP4 was created; false otherwise.
+	 */
+	/*
+	public boolean makeMP4(DicomObject dicomObject, int minFrames) {
+		boolean done = false;
+		int nFrames = dicomObject.getNumberOfFrames();
+		TFSSequenceEncoder out = null;
+
+		if (dicomObject.isImage() && (nFrames > 0) && (nFrames >= minFrames)) {
+			try {
+				File mp4File = new File(docDir, dicomObject.getFile().getName()+".mp4");
+				int rows = dicomObject.getRows();
+				int columns = dicomObject.getColumns();
+				int rate = StringUtil.getInt( dicomObject.getElementValue("RecommendedDisplayFrameRate"), 10 );
+
+				out = new TFSSequenceEncoder(mp4File, columns, rows,  rate);
+				for (int frame=0; frame<nFrames; frame++) {
+					out.encodeImage(dicomObject.getScaledBufferedImage(frame, columns, columns));
+				}
+				done = true;
+			}
+			catch (Exception ex) { logger.warn("Unable to create MP4", ex); }
+			finally {
+				if (out != null) {
+					try { out.finish(); }
+					catch (Exception unable) { }
+				}
+			}
+		}
+		return done;
+	}
+	*/
 
 	//*********************************************************************************************
 	//
@@ -1858,6 +1990,11 @@ public class MircDocument {
 		orderBy.setAttribute("series", dicomObject.getSeriesNumber());
 		orderBy.setAttribute("acquisition", dicomObject.getAcquisitionNumber());
 		orderBy.setAttribute("instance", dicomObject.getInstanceNumber());
+
+		String studyDesc = dicomObject.getStudyDescription().replace("\"", "").replace("\'", "");
+		orderBy.setAttribute("study-desc", studyDesc);
+		String seriesDesc = dicomObject.getSeriesDescription().replace("\"", "").replace("\'", "");
+		orderBy.setAttribute("series-desc", seriesDesc);
 		return orderBy;
 	}
 

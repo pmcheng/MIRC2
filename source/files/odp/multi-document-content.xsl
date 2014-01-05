@@ -39,11 +39,11 @@
 				office:version="1.2"
 				grddl:transformation="http://docs.oasis-open.org/office/1.2/xslt/odf2rdf.xsl" >
 
-<xsl:param name="userIsOwner"/>
+<xsl:param name="username"/>
 <xsl:param name="images"/>
 <xsl:param name="isDraft" select="/MIRCdocument/@temp"/>
 
-<xsl:template match="/MIRCdocument">
+<xsl:template match="/MIRCdocuments">
 	<office:document-content
 				xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
 				xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -91,12 +91,16 @@
 <xsl:template name="body">
 	<office:body>
 		<office:presentation>
-			<xsl:apply-templates select="title"/>
-			<xsl:apply-templates select="section[not(@visible='no') and not(@visible='owner')]/p
-											| section/image
-												| image-section/image"/>
+			<xsl:apply-templates select="MIRCdocument"/>
 		</office:presentation>
 	</office:body>
+</xsl:template>
+
+<xsl:template match="MIRCdocument">
+	<xsl:apply-templates select="title"/>
+	<xsl:apply-templates select="section[not(@visible='no') and not(@visible='owner')]/p
+									| section/image
+										| image-section/image"/>
 </xsl:template>
 
 <xsl:template match="title">
@@ -156,8 +160,9 @@
 
 <xsl:template match="image">
 	<xsl:variable name="n"><xsl:number level="any"/></xsl:variable>
+	<xsl:variable name="id" select="@id"/>
 	<xsl:variable name="src" select="@src"/>
-	<xsl:variable name="img" select="$images/images/image[@name=$src]"/>
+	<xsl:variable name="img" select="$images/images/image[@id=$id]"/>
 	<xsl:if test="$img">
 		<draw:page draw:style-name="dp1" draw:id="Image-{$n}" draw:name="Image-{$n}" draw:master-page-name="Default">
 			<draw:frame
@@ -176,12 +181,11 @@
 					<text:p />
 				</draw:image>
 			</draw:frame>
-			<xsl:if test="image-caption or order-by">
+			<xsl:if test="image-caption">
 				<draw:frame draw:style-name="gr1" draw:text-style-name="P1" draw:layer="layout" svg:width="26.000cm" svg:height="3.000cm" svg:x="1.000cm" svg:y="0.100cm">
 					<draw:text-box>
 						<xsl:apply-templates select="image-caption[@display='always']"/>
 						<xsl:apply-templates select="image-caption[@display='click']"/>
-						<xsl:apply-templates select="order-by"/>
 					</draw:text-box>
 				</draw:frame>
 			</xsl:if>
@@ -194,8 +198,9 @@
 
 <xsl:template match="alternative-image[@role='annotation']">
 	<xsl:param name="n"/>
+	<xsl:variable name="id" select="@id"/>
 	<xsl:variable name="src" select="@src"/>
-	<xsl:variable name="img" select="$images/images/image[@name=$src]"/>
+	<xsl:variable name="img" select="$images/images/image[@id=$id]"/>
 	<xsl:if test="$img">
 		<draw:page draw:style-name="dp1" draw:id="Annotation-{$n}" draw:name="Annotation-{$n}" draw:master-page-name="Default">
 			<draw:frame
@@ -219,27 +224,9 @@
 </xsl:template>
 
 <xsl:template match="image-caption">
-	<xsl:variable name="text" select="normalize-space(.)"/>
-	<xsl:if test="$text">
-		<text:p>
-			<text:span text:style-name="T1"><xsl:value-of select="$text"/></text:span>
-		</text:p>
-	</xsl:if>
-</xsl:template>
-
-<xsl:template match="order-by">
-	<xsl:variable name="study" select="normalize-space(@study-desc)"/>
-	<xsl:if test="$study">
-		<text:p>
-			<text:span text:style-name="T1"><xsl:value-of select="$study"/></text:span>
-		</text:p>
-	</xsl:if>
-	<xsl:variable name="series" select="normalize-space(@series-desc)"/>
-	<xsl:if test="$series">
-		<text:p>
-			<text:span text:style-name="T1"><xsl:value-of select="$series"/></text:span>
-		</text:p>
-	</xsl:if>
+	<text:p>
+		<text:span text:style-name="T1"><xsl:value-of select="normalize-space(.)"/></text:span>
+	</text:p>
 </xsl:template>
 
 <xsl:template name="scripts">

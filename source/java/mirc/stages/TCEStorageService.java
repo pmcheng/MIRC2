@@ -75,9 +75,10 @@ public class TCEStorageService extends AbstractPipelineStage implements StorageS
 		//Get the attribute that determines whether to anonymize
 		//the objects inserted into the MIRCdocument.
 		anonymize = element.getAttribute("anonymize").equals("yes");
-		scriptFile = FileUtil.getFile(element.getAttribute("script"), "examples/example-dicom-anonymizer.script");
+		scriptFile = FileUtil.getFile(element.getAttribute("script").trim(), "examples/example-dicom-anonymizer.script");
 		lookupTableFile = FileUtil.getFile(element.getAttribute("lookupTable"), (String)null);
-		intTable = new IntegerTable(root);
+		try { intTable = new IntegerTable(root); }
+		catch (Exception ex) { logger.warn(name+": "+ex.getMessage()); }
 
 		//Instantiate the TCEStore for instances and manifests.
 		//The TCEStore also provides the queue of manifests for

@@ -133,6 +133,7 @@
 			<br/>
 		</div>
 		<div class="L2" id="ApprovalQueue"><a href="javascript:approvalQueueNew();">Case Approval Queue</a><br/></div>
+		<div class="L2" id="Special"><a href="javascript:specialNew();">Resident Non-Public</a><br/></div>
 
 		<div id="Conferences">
 			<div class="MenuBar" id="confMenuBar">;</div>
@@ -218,6 +219,7 @@
 		<div class="L2"><a href="/system">System Properties</a><br/></div>
 		<div class="L2"><a href="/configuration">CTP Configuration</a><br/></div>
 		<div class="L2"><a href="/status">CTP Status</a><br/></div>
+		<div class="L2"><a href="/quarantines">Quarantines</a><br/></div>
 		<div class="L2"><a href="/logs?home=/query">Log Viewer</a><br/></div>
 		<div class="L2"><a href="/level">Logger Levels</a><br/></div>
 		<div class="L2"><a href="javascript:listCookies();">List Cookies</a><br/></div>
@@ -248,6 +250,7 @@
 <xsl:template name="params">
 	<script>
 		var sitename = "<xsl:value-of select="$sitename"/>";
+		var email = "<xsl:value-of select="@email"/>";
 		var mode = "<xsl:value-of select="@mode"/>";
 		var version = "<xsl:value-of select="@version"/>";
 		var rsnaVersion = "<xsl:value-of select="@rsnaVersion"/>";

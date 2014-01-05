@@ -21,7 +21,9 @@ import mirc.MircConfig;
 import mirc.util.MircDocument;
 import mirc.util.MircImage;
 import org.apache.log4j.Logger;
+import org.rsna.ctp.objects.DicomObject;
 import org.rsna.server.User;
+import org.rsna.server.Users;
 import org.rsna.util.FileUtil;
 import org.rsna.util.JdbmUtil;
 import org.rsna.util.StringUtil;
@@ -328,6 +330,8 @@ public class Index {
 	 */
 	public IndexEntry[] query(Query mq, boolean isOpen, User user) {
 
+		if (mq.isSpecialQuery) return query(mq, user);
+
 		if (mq.isBlankQuery && !mq.containsNonFreetextQueries) {
 
 			//Handle this case separately because it can be very fast.
@@ -375,6 +379,33 @@ public class Index {
 		//Now remove temp documents if necessary
 		if (!mq.isTempQuery) removeTempDocs(set);
 
+		return set.toArray( new IndexEntry[ set.size() ] );
+	}
+
+	//Do a special query to find all the non-public documents
+	//that do not have publication requests for users who are
+	//authors but not publishers.
+	private IndexEntry[] query(Query mq, User user) {
+		HashSet<Integer> ids = null;
+		Users users = Users.getInstance();
+		String[] usernames = users.getUsernames();
+		IndexDatabase accessDB = fields.get("access");
+		IndexDatabase pubreqDB = fields.get("pubreq");
+		IndexDatabase ownerDB = fields.get("owner");
+		HashSet<Integer> accessSet = accessDB.getIDsForQueryString("public");
+		HashSet<Integer> pubreqSet = pubreqDB.getIDsForQueryString("yes");
+		for (String username : usernames) {
+			User u = users.getUser(username);
+			if ((u != null) && u.hasRole("author") && !u.hasRole("publisher")) {
+				HashSet<Integer> temp = ownerDB.getIDsForQueryString(u.getUsername());
+				ids = IndexDatabase.union(ids, temp);
+			}
+		}
+		ids.removeAll(accessSet);
+		ids.removeAll(pubreqSet);
+		HashSet<IndexEntry> set = getMIESet(ids);
+		boolean isAdmin = (user != null) && user.hasRole("admin");
+		if (!isAdmin) set = filterOnAccess(set, user);
 		return set.toArray( new IndexEntry[ set.size() ] );
 	}
 
@@ -556,6 +587,7 @@ public class Index {
 						changed |= chg;
 					}
 				}
+				changed |= setImageDesc(dir, image);
 			}
 		}
 		catch (Exception skip) { }
@@ -581,6 +613,38 @@ public class Index {
 								+"src attribute: \""+src+"\"\n"
 								+"image element:\n"
 								+XmlUtil.toPrettyString(img), skip);
+				}
+			}
+		}
+		return false;
+	}
+
+	//Set the desc attributes for one image, if necessary.
+	private boolean setImageDesc(File dir, Element img) {
+		NodeList nl = img.getElementsByTagName("alternative-image");
+		for (int i=0; i<nl.getLength(); i++) {
+			Element altimg = (Element)nl.item(i);
+			if (altimg.getAttribute("role").equals("original-format")) {
+				String src = altimg.getAttribute("src").trim();
+				String srclc = src.toLowerCase();
+				if (!src.equals("") && !srclc.startsWith("http://") && !srclc.startsWith("/") && !srclc.startsWith("\\") && srclc.endsWith(".dcm")) {
+					Element orderBy = XmlUtil.getFirstNamedChild(img, "order-by");
+					if (orderBy == null) {
+						orderBy = img.getOwnerDocument().createElement("order-by");
+						img.appendChild(orderBy);
+					}
+					if (orderBy.getAttribute("study-desc").trim().equals("") || orderBy.getAttribute("series-desc").trim().equals("")) {
+						File imageFile = new File(dir, src);
+						try {
+							DicomObject dicomObject = new DicomObject(imageFile);
+							String studyDesc = dicomObject.getStudyDescription().replace("\"", "").replace("\'", "");
+							orderBy.setAttribute("study-desc", studyDesc);
+							String seriesDesc = dicomObject.getSeriesDescription().replace("\"", "").replace("\'", "");
+							orderBy.setAttribute("series-desc", seriesDesc);
+							return true;
+						}
+						catch (Exception skip) { }
+					}
 				}
 			}
 		}

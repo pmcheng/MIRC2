@@ -288,7 +288,22 @@
 		</input>
 
 		<xsl:for-each select="section | image-section">
-			<input type="button" class="deselectedTab" onclick="tabClicked(event);">
+			<input type="button" class="deselectedTab">
+				<xsl:choose>
+					<xsl:when test="($draft='yes') and (name(.)='image-section')">
+						<xsl:attribute name="onclick">
+							<xsl:text>tabClicked(event);</xsl:text>
+							<xsl:text>alert('Image section changes are not saved in draft documents.\n</xsl:text>
+							<xsl:text>To make changes in this section, first save the document.');</xsl:text>
+						</xsl:attribute>
+					</xsl:when>
+					<xsl:otherwise>
+						<xsl:attribute name="onclick">
+							<xsl:text>tabClicked(event);</xsl:text>
+						</xsl:attribute>
+					</xsl:otherwise>
+				</xsl:choose>
+
 				<xsl:attribute name="value">
 					<xsl:choose>
 						<xsl:when test="not(string-length(normalize-space(@heading)) = 0)">
@@ -586,13 +601,15 @@
 			name field.
 		</p>
 		<xsl:variable name="authors" select="author[ (name!='') and not(contains(name, '(draft)')) ]"/>
-		<xsl:for-each select="$authors">
-			<xsl:call-template name="author">
-				<xsl:with-param name="author-name" select="name"/>
-				<xsl:with-param name="author-affiliation" select="affiliation"/>
-				<xsl:with-param name="author-contact" select="contact"/>
-			</xsl:call-template>
-		</xsl:for-each>
+		<xsl:if test="$authors and not($draft='yes')">
+			<xsl:for-each select="$authors">
+				<xsl:call-template name="author">
+					<xsl:with-param name="author-name" select="name"/>
+					<xsl:with-param name="author-affiliation" select="affiliation"/>
+					<xsl:with-param name="author-contact" select="contact"/>
+				</xsl:call-template>
+			</xsl:for-each>
+		</xsl:if>
 		<xsl:if test="not($authors) or ($draft='yes')">
 			<xsl:call-template name="author">
 				<xsl:with-param name="author-name" select="$prefs/User/@name"/>
@@ -1792,6 +1809,9 @@
 							(../@type='' and not(contains(.,'.svg'))))]"
 			/>
 		</xsl:attribute>
+		<xsl:attribute name="video">
+			<xsl:value-of select="$image/alternative-image/@src[../@role='video']"/>
+		</xsl:attribute>
 		<xsl:attribute name="original-dimensions">
 			<xsl:value-of select="$image/alternative-image/@src[../@role='original-dimensions']"/>
 		</xsl:attribute>
@@ -1828,6 +1848,12 @@
 			</xsl:attribute>
 			<xsl:attribute name="orderby-date">
 				<xsl:value-of select="order-by/@date"/>
+			</xsl:attribute>
+			<xsl:attribute name="orderby-study-desc">
+				<xsl:value-of select="order-by/@study-desc"/>
+			</xsl:attribute>
+			<xsl:attribute name="orderby-series-desc">
+				<xsl:value-of select="order-by/@series-desc"/>
 			</xsl:attribute>
 		</xsl:if>
 	</img>
